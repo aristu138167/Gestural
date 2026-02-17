@@ -1,33 +1,102 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <title>Three.js Tutorials by Sean Bradley : https://sbcode.net/threejs/</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>
-            body {
-                overflow: hidden;
-                margin: 0px;
-            }
-        </style>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SBCode-lite (local)</title>
+  <style>
+    html, body { height:100%; margin:0; background:#000; overflow:hidden; }
+    #app { height:100%; width:100%; position:relative; }
 
-        <!-- Import maps polyfill -->
-        <!-- Remove this when import maps will be widely supported -->
-        <script
-            async
-            src="https://unpkg.com/es-module-shims@1.6.2/dist/es-module-shims.js"
-        ></script>
+    /* Fondo: preview full-screen */
+    #preview {
+      position:fixed;
+      inset:0;
+      width:100vw;
+      height:100vh;
+      border:0;
+      background:#000;
+      z-index:0;
+    }
 
-        <script type="importmap">
-            {
-                "imports": {
-                    "three": "./build/three.module.js"
-                }
-            }
-        </script>
-    </head>
+    /* Panel editor encima (estilo Hydra) */
+    #overlay{
+      position:fixed;
+      top:16px;
+      left:16px;
+      width:min(720px, calc(100vw - 32px));
+      height:min(70vh, 640px);
+      display:flex;
+      flex-direction:column;
+      z-index:10;
 
-    <body>
-        <script type="module" src="client.js"></script>
-    </body>
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:10px;
+      overflow:hidden;
+
+      background:rgba(0,0,0,0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    #bar{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      padding:10px 10px;
+      border-bottom:1px solid rgba(255,255,255,0.10);
+      background:rgba(0,0,0,0.45);
+      user-select:none;
+    }
+
+    #run, #toggle{
+      padding:6px 10px;
+      cursor:pointer;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,0.18);
+      background:rgba(255,255,255,0.06);
+      color:#eaeaea;
+    }
+    #run:hover, #toggle:hover{ background:rgba(255,255,255,0.10); }
+
+    #hint{
+      color:rgba(255,255,255,0.70);
+      font:12px/1.2 system-ui, sans-serif;
+      margin-left:auto;
+    }
+
+    #code{
+      flex:1;
+      width:100%;
+      border:0;
+      outline:0;
+      resize:none;
+      padding:12px 12px;
+      background:transparent;
+      color:#e8e8e8;
+      font:13px/1.45 Consolas, monospace;
+      tab-size:2;
+    }
+
+    #overlay.minimized{ height:auto; }
+    #overlay.minimized #code{ display:none; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <iframe id="preview" sandbox="allow-scripts"></iframe>
+
+    <div id="overlay">
+      <div id="bar">
+        <button id="run">Run (Ctrl+S)</button>
+        <button id="toggle">Hide</button>
+        <span id="hint">JS only → THREE, scene, camera, renderer…</span>
+      </div>
+      <textarea id="code" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
 </html>
