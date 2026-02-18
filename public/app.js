@@ -34,7 +34,7 @@ scene.add(light);
 // Params editables
 // El usuario puede hacer: __SB.params.rotSpeed = 2.0; etc.
 const params = {
-  rotSpeed: 0.8,
+  rotSpeed: 0,
   animSpeed: 1.0,
   scale: 1.0,
   scrub: 0.0,
