@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MoveCode Editor (local)</title>
   <style>
-    html, body { height:100%; margin:0; background:#000; overflow:hidden; }
+    html, body { height:100%; margin:0; background:#000000; overflow:hidden; }
     #app { height:100%; width:100%; position:relative; }
 
     /* Fondo: preview full-screen */
@@ -74,16 +74,8 @@
 
     #code{
       flex:1;
+      min-height:0;
       width:100%;
-      border:0;
-      outline:0;
-      resize:none;
-      padding:12px 12px;
-      background:transparent;
-      text-shadow: 0 0 4px black;
-      color:#e8e8e8;
-      font:13px/1.45 Consolas, monospace;
-      tab-size:2;
     }
 
     #overlay.minimized{ min-height: 0;}
@@ -116,7 +108,46 @@
     border-bottom:2px solid rgba(255,255,255,0.35);
     opacity: 0.9;
     }
+    /* ===== CODEMIRROR FUERTE CONTRASTE ===== */
+    .CodeMirror {
+      flex: 1;
+      height: 100% !important;
+      min-height: 0;
+      background: transparent !important;
+      color: #ffffff !important;
+      font: 14px/1.6 Consolas, monospace;
+    }
+
+    /* Fondo negro por línea */
+    .CodeMirror-line {
+      background: #000000;
+      border-radius: 4px;
+      padding: 2px 8px;
+    }
+
+    /* Asegura texto blanco en tokens */
+    .CodeMirror span {
+      color: #ffffff !important;
+    }
+
+    /* Cursor blanco */
+    .CodeMirror-cursor {
+      border-left: 2px solid #ffffff !important;
+    }
+
+    /* Selección visible */
+    .CodeMirror-selected {
+      background: #333333 !important;
+    }
+
+    /* Quita cualquier fondo gris */
+    .CodeMirror-scroll {
+      background: transparent !important;
+    }
   </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.15/lib/codemirror.css">
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.15/lib/codemirror.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.15/mode/javascript/javascript.js"></script>
 </head>
 <body>
   <div id="app">
@@ -128,7 +159,7 @@
         <button id="toggle">Hide</button>
         <span id="hint">SBCode Editor Local</span>
       </div>
-      <textarea id="code" spellcheck="false"></textarea>
+      <div id="code"></div>
       <div id="resizeHandle"></div>
     </div>
   </div>

@@ -284,14 +284,23 @@ const codeEl = document.getElementById("code");
 const runBtn = document.getElementById("run");
 const toggleBtn = document.getElementById("toggle");
 const overlay = document.getElementById("overlay");
+const editor = CodeMirror(document.getElementById("code"), {
+  value: defaultCode,
+  mode: "javascript",
+  lineNumbers: false,
+  theme: "default",
+  indentUnit: 2,
+  tabSize: 2,
+  lineWrapping: false
+});
 
-// codeEl.value = localStorage.getItem("sbcode_lite_code") || defaultCode;
+// editor.getValue() = localStorage.getItem("sbcode_lite_code") || defaultCode;
 localStorage.removeItem("sbcode_lite_code");
-codeEl.value = defaultCode;
+editor.setValue(defaultCode);
 
 function run() {
-  localStorage.setItem("sbcode_lite_code", codeEl.value);
-  iframe.srcdoc = buildPreviewHtml(codeEl.value);
+  localStorage.setItem("sbcode_lite_code", editor.getValue());
+  iframe.srcdoc = buildPreviewHtml(editor.getValue());
 }
 
 runBtn.addEventListener("click", run);
