@@ -24,9 +24,8 @@
       position:fixed;
       top:16px;
       left:16px;
-      /* Nuevos tamaños iniciales manteniendo la responsividad */
       width: min(520px, calc(100vw - 32px)); 
-      height: min(275px, calc(100vh - 32px));
+      height: min(420px, calc(100vh - 32px));
       display:flex;
       flex-direction:column;
       z-index:10;
@@ -35,10 +34,16 @@
       border-radius:10px;
       overflow:hidden;
 
-      background: transparent;
+      /* TOTALEMNTE TRANSPARENTE */
+      /* background: transparent;
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
-      box-shadow: none;
+      box-shadow: none; */
+
+      /* TRANSLUCIDO */
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(1px);
+      -webkit-backdrop-filter: blur(1px);
     }
 
     #bar{
