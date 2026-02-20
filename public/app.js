@@ -172,6 +172,7 @@ const bvhApi = `
       const url = fileOrUrl.startsWith("http") ? fileOrUrl : "/assets/" + fileOrUrl + ".bvh";
 
       const handle = {
+      _rawFile: fileOrUrl,
         _url: url,
         _x: 0, _y: 0, _z: 0,
         _scale: null,
@@ -238,11 +239,31 @@ const bvhApi = `
             undefined,
             (err) => { throw new Error("BVH load error (" + this._url + "): " + (err?.message || err)); }
           );
-          return SB;
+          return this;
         }
       };
 
       return handle;
+    },
+    duplicate(originalHandle) {
+      if (!originalHandle || !originalHandle._rawFile) {
+        throw new Error("duplicate() necesita un objeto BVH válido.");
+      }
+
+      // Creamos la nueva instancia usando el nombre original
+      const newHandle = this.bvh(originalHandle._rawFile);
+
+      // Copiamos todo su estado interno
+      newHandle._x = originalHandle._x;
+      newHandle._y = originalHandle._y;
+      newHandle._z = originalHandle._z;
+      newHandle._scale = originalHandle._scale;
+      newHandle._rotY = originalHandle._rotY;
+      newHandle._showSkeleton = originalHandle._showSkeleton;
+      newHandle._speed = originalHandle._speed;
+      newHandle._reverse = originalHandle._reverse;
+
+      return newHandle;
     },
 
     speed(v){ SB.params.speed = v; return SB; },
@@ -299,6 +320,7 @@ const bvhApi = `
   window.scale = (v) => SB.scale(v);
   window.rot = (v) => SB.rot(v);
   window.reverse = (v) => SB.reverse(v);
+  window.duplicate = (h) => SB.duplicate(h);
 `;
 
 const iframe = document.getElementById("preview");
