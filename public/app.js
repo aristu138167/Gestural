@@ -111,28 +111,28 @@ function animate() {
 </html>`;
 }
 
-const defaultCode = `
-  clear();
-  grid(400, 10);
-  cam(0, 200, 450, 0, 120, 0);
+const defaultCode = `clear();
+grid(400, 10);
+cam(0, 200, 450, 0, 120, 0);
 
-  /// Motion  Capture Files
-  bvh("A_test").x(0).scale(1).speed(1).play();
-  bvh("B_test").x(-30).scale(1).speed(1).play();
-  bvh("C_test").x(30).scale(1).speed(1).play();
-  bvh("pirouette").x(50).scale(1).speed(1).play();
-  bvh("ejercicios_rehabilitacion").x(-50).z(-80).scale(1).speed(1).play();
+/// Motion  Capture Files
+bvh("A_test").x(0).scale(1).speed(1).play();
+bvh("B_test").x(-30).scale(1).speed(1).play();
+bvh("C_test").x(30).scale(1).speed(1).play();
+bvh("pirouette").x(50).scale(1).speed(1).reverse(true).play();
+bvh("ejercicios_rehabilitacion").x(-50).z(-80).scale(1).speed(1).play();
 
-  /// Global
-  speed(1.0);
-  skeleton(true);
-  scale(1.0);
-  // rot(0.2);
-  // pause(true);
+/// Global
+speed(1.0);
+skeleton(true);
+scale(1.0);
+// reverse(true);
+// rot(0.2);
+// pause(true);
 `;
 const bvhApi = `
   const clock = new THREE.Clock();
-  const rigs = [];   // { root, helper, mixer, action, opts }
+  const rigs = [];   // { root, helper, mixer, action, clip, opts }
   const mixers = []; // AnimationMixers
 
   const SB = {
@@ -141,7 +141,8 @@ const bvhApi = `
       pause: false,
       showSkeleton: true,
       globalScale: 1.0,
-      rotSpeed: 0.0
+      rotSpeed: 0.0,
+      reverse: false
     },
 
     grid(size=400, div=10) {
@@ -177,6 +178,7 @@ const bvhApi = `
         _rotY: 0,
         _showSkeleton: null,
         _speed: null,
+        _reverse: null, // <-- Ahora es null para poder leer el global
 
         x(v){ this._x=v; return this; },
         y(v){ this._y=v; return this; },
@@ -186,6 +188,7 @@ const bvhApi = `
         rotY(r){ this._rotY=r; return this; },
         skeleton(v){ this._showSkeleton=v; return this; },
         speed(v){ this._speed=v; return this; },
+        reverse(v=true){ this._reverse=v; return this; },
 
         play() {
           const loader = new BVHLoader();
@@ -214,13 +217,20 @@ const bvhApi = `
               const mixer = new THREE.AnimationMixer(root);
               const action = mixer.clipAction(result.clip);
               action.play();
+              
+              const isReversed = this._reverse ?? SB.params.reverse;
+              if (isReversed) {
+                action.time = result.clip.duration;
+              }
 
               rigs.push({
                 root, helper, mixer, action,
+                clip: result.clip, // <-- Guardamos el clip para el _tick
                 opts: {
                   speed: (this._speed ?? 1.0),
                   showSkeleton: (this._showSkeleton ?? null),
-                  scale: (this._scale ?? null)
+                  scale: (this._scale ?? null),
+                  reverse: this._reverse
                 }
               });
               mixers.push(mixer);
@@ -240,6 +250,7 @@ const bvhApi = `
     skeleton(v=true){ SB.params.showSkeleton = v; return SB; },
     scale(v){ SB.params.globalScale = v; return SB; },
     rot(v){ SB.params.rotSpeed = v; return SB; },
+    reverse(v=true){ SB.params.reverse = v; return SB; },
 
     _tick() {
       const dt = clock.getDelta();
@@ -260,7 +271,17 @@ const bvhApi = `
         for (let i=0;i<mixers.length;i++){
           const r = rigs[i];
           const localSpeed = r?.opts?.speed ?? 1.0;
-          mixers[i].timeScale = SB.params.speed * localSpeed;
+          
+          const isReversed = r.opts?.reverse ?? SB.params.reverse;
+          const dir = isReversed ? -1 : 1;
+          
+          mixers[i].timeScale = SB.params.speed * localSpeed * dir;
+          
+          if (isReversed && r.action && r.clip) {
+            const dur = r.clip.duration;
+            if (r.action.time <= 0.0001) r.action.time = dur;
+          }
+          
           mixers[i].update(dt);
         }
       }
@@ -277,6 +298,7 @@ const bvhApi = `
   window.skeleton = (v=true) => SB.skeleton(v);
   window.scale = (v) => SB.scale(v);
   window.rot = (v) => SB.rot(v);
+  window.reverse = (v) => SB.reverse(v);
 `;
 
 const iframe = document.getElementById("preview");
