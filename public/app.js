@@ -1,3 +1,5 @@
+import { examples } from './examples.js'; // <-- NUEVO: Importamos tus creaciones
+
 function escapeForScript(code) {
   let safeCode = code.replace(/<\/script>/gi, "<\\/script>");
   const lines = safeCode.split('\n');
@@ -30,13 +32,12 @@ function buildPreviewHtml(userCode) {
 <body>
   <canvas id="c"></canvas>
   <div id="err"></div>
-  <script type="module" src="./bvhApi.js"></script>
+  <script type="module" src="./bvhApi.js?v=${Date.now()}"></script>
   <script type="module">
     const errBox = document.getElementById("err");
     function showErr(msg) { errBox.style.display = "block"; errBox.textContent += "\\n" + msg; }
     window.addEventListener("error", (e) => showErr(e.error?.stack || e.message || e.type));
     
-    // Pequeño retardo para asegurar que bvhApi.js está cargado
     setTimeout(() => {
       try {
         ${escapeForScript(userCode)}
@@ -57,6 +58,7 @@ const toggleBtn = document.getElementById("toggle");
 const overlay = document.getElementById("overlay");
 const bar = document.getElementById("bar");
 const resizeHandle = document.getElementById("resizeHandle");
+const randomBtn = document.getElementById("randomBtn");
 
 // --- EJECUCIÓN ---
 function run() {
@@ -70,6 +72,17 @@ window.addEventListener("keydown", (e) => {
     run();
   }
 });
+
+// --- BOTÓN RANDOM ---
+if (randomBtn) {
+  randomBtn.addEventListener("click", () => {
+    const randomIndex = Math.floor(Math.random() * examples.length);
+    const selected = examples[randomIndex];
+    const codeWithTitle = `///// ${selected.name} /////\n${selected.code}`;
+    codeEl.value = codeWithTitle;
+    run();
+  });
+}
 
 // --- MINIMIZAR / MAXIMIZAR ---
 let prevSize = null;
@@ -156,15 +169,11 @@ window.addEventListener("pointerup", () => {
   resizing = false;
 });
 
-// --- INICIO: LEER ARCHIVO Y EJECUTAR ---
-async function init() {
-  try {
-    const response = await fetch('./defaultCode.js');
-    const codeText = await response.text();
-    codeEl.value = codeText;
-  } catch (err) {
-    console.warn("No se pudo cargar el archivo defaultCode.js. Revisa si estás usando un servidor local (Live Server).", err);
-  }
+// --- INICIO: CARGAR CÓDIGO POR DEFECTO Y EJECUTAR ---
+function init() {
+  const defaultExample = examples[0];
+  const codeWithTitle = `// --- ${defaultExample.name} ---\n${defaultExample.code}`;
+  codeEl.value = codeWithTitle;
   run();
 }
 

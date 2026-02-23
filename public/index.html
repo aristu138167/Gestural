@@ -1,38 +1,51 @@
 <!doctype html>
 <html lang="es">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <title>MoveCode Editor (local)</title>
   <style>
-    html, body { height:100%; margin:0; background:#000; overflow:hidden; }
-    #app { height:100%; width:100%; position:relative; }
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #app {
+      height: 100%;
+      width: 100%;
+      position: relative;
+    }
 
     /* Fondo: preview full-screen */
     #preview {
-      position:fixed;
-      inset:0;
-      width:100vw;
-      height:100vh;
-      border:0;
-      background:#000;
-      z-index:0;
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      border: 0;
+      background: #000;
+      z-index: 0;
     }
 
     /* Panel editor encima (estilo Hydra) */
-   #overlay{
-      position:fixed;
-      top:16px;
-      left:16px;
-      width: min(520px, calc(100vw - 32px)); 
+    #overlay {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: min(520px, calc(100vw - 32px));
       height: min(420px, calc(100vh - 32px));
-      display:flex;
-      flex-direction:column;
-      z-index:10;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
 
-      border:1px solid rgba(255,255,255,0.12);
-      border-radius:10px;
-      overflow:hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      overflow: hidden;
 
       /* TOTALEMNTE TRANSPARENTE */
       /* background: transparent;
@@ -46,88 +59,106 @@
       -webkit-backdrop-filter: blur(1px);
     }
 
-    #bar{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      padding:10px 10px;
-      border-bottom:1px solid rgba(255,255,255,0.10);
+    #bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
       /* background:rgba(0,0,0,0.45); */
       background: transparent;
-      user-select:none;
+      user-select: none;
     }
 
-    #run, #toggle{
-      padding:6px 10px;
-      cursor:pointer;
-      border-radius:8px;
-      border:1px solid rgba(255,255,255,0.18);
-      background:rgba(255,255,255,0.06);
-      color:#eaeaea;
-    }
-    #run:hover, #toggle:hover{ background:rgba(255,255,255,0.10); }
-
-    #hint{
-      color:rgba(255,255,255,0.70);
-      font:12px/1.2 system-ui, sans-serif;
-      margin-left:auto;
+    #run,
+    #toggle,
+    #randomBtn {
+      padding: 6px 10px;
+      cursor: pointer;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.06);
+      color: #eaeaea;
     }
 
-    #code{
-      flex:1;
-      width:100%;
-      border:0;
-      outline:0;
-      resize:none;
-      padding:12px 12px;
-      background:transparent;
+    #run:hover,
+    #toggle:hover {
+      background: rgba(255, 255, 255, 0.10);
+    }
+
+    #hint {
+      color: rgba(255, 255, 255, 0.70);
+      font: 12px/1.2 system-ui, sans-serif;
+      margin-left: auto;
+    }
+
+    #code {
+      flex: 1;
+      width: 100%;
+      border: 0;
+      outline: 0;
+      resize: none;
+      padding: 12px 12px;
+      background: transparent;
       text-shadow: 0 0 4px black;
-      color:#e8e8e8;
-      font:13px/1.45 Consolas, monospace;
-      tab-size:2;
+      color: #e8e8e8;
+      font: 13px/1.45 Consolas, monospace;
+      tab-size: 2;
     }
 
-    #overlay.minimized{ min-height: 0;}
-    #overlay.minimized #code{ display:none; }
-    #overlay.minimized #resizeHandle{display:none;}
+    #overlay.minimized {
+      min-height: 0;
+    }
+
+    #overlay.minimized #code {
+      display: none;
+    }
+
+    #overlay.minimized #resizeHandle {
+      display: none;
+    }
 
     /* límites del panel */
-    #overlay{
-    min-width: 320px;
-    min-height: 220px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 16px);
+    #overlay {
+      min-width: 320px;
+      min-height: 220px;
+      max-width: calc(100vw - 16px);
+      max-height: calc(100vh - 16px);
     }
 
     /* scroll dentro del textarea si es largo */
-    #code{
-    overflow: auto;
-    white-space: pre;
+    #code {
+      overflow: auto;
+      white-space: pre;
     }
 
     /* handle de resize (esquina inferior derecha) */
-    #resizeHandle{
-    position:absolute;
-    right:8px;
-    bottom:8px;
-    width:14px;
-    height:14px;
-    cursor:nwse-resize;
-    border-right:2px solid rgba(255,255,255,0.35);
-    border-bottom:2px solid rgba(255,255,255,0.35);
-    opacity: 0.9;
+    #resizeHandle {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      width: 14px;
+      height: 14px;
+      cursor: nwse-resize;
+      border-right: 2px solid rgba(255, 255, 255, 0.35);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.35);
+      opacity: 0.9;
     }
+
     /* 1. Hacemos que la caja principal sea "fantasma" para el ratón */
     #overlay {
       pointer-events: none;
     }
 
     /* 2. Le devolvemos la interacción a los elementos que sí tocamos */
-    #bar, #code, #resizeHandle {
+    #bar,
+    #code,
+    #resizeHandle {
       pointer-events: auto;
     }
   </style>
 </head>
+
 <body>
   <div id="app">
     <iframe id="preview" sandbox="allow-scripts allow-same-origin"></iframe>
@@ -136,7 +167,9 @@
       <div id="bar">
         <button id="run">Run (Ctrl+S)</button>
         <button id="toggle">Hide</button>
-        <span id="hint">SBCode Editor Local</span>
+        <button id="randomBtn" style="cursor:pointer; margin-right:5px;">
+          <i class="fas fa-random"></i> Random
+        </button>
       </div>
       <textarea id="code" spellcheck="false"></textarea>
       <div id="resizeHandle"></div>
@@ -145,4 +178,5 @@
 
   <script type="module" src="./app.js"></script>
 </body>
+
 </html>
