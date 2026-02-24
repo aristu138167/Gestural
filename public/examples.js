@@ -6,11 +6,11 @@ grid(400, 10);
 cam(0, 200, 450, 0, 120, 0);
 
 /// Archivos de Captura de Movimiento
-bvh("A_test").x(0).scale(1).speed(1).play();
-bvh("B_test").x(-60).scale(1).speed(1).play();
-bvh("C_test").x(60).scale(1).speed(1).play();
-bvh("pirouette").x(100).scale(1).speed(1).play();
-bvh("ejercicios_rehabilitacion").x(-100).z(-160).scale(1).speed(1).play();
+bvh("A_test").x(0).speed(1).play();
+bvh("B_test").x(-60).speed(1).play();
+bvh("C_test").x(60).speed(1).play();
+bvh("pirouette").x(100).speed(1).play();
+bvh("ejercicios_rehabilitacion").x(-100).z(-160).speed(1).play();
 
 /// Controles Globales
 speed(1.0);
@@ -37,6 +37,93 @@ duplicate(bailarin4).reverse().play();
 duplicate(bailarin5).reverse().play();
 duplicate(bailarin6).reverse().play();
 rot(0.1)`
+  },
+  {
+    name: "El Tejido Colorido",
+    code: `clear();
+bg("#000205"); 
+cam(0, 400, 700, 0, 100, 0);
+
+let molde = bvh("pirouette").pos(0, -2000, 0).skeleton(false).play();
+
+let columnas = 5;
+let filas = 5;
+let separacion = 120;
+
+for (let x = 0; x < columnas; x++) {
+  for (let z = 0; z < filas; z++) {
+    
+    // Calculamos la cuadrícula perfectamente centrada
+    let posX = (x - columnas / 2 + 0.5) * separacion;
+    let posZ = (z - filas / 2 + 0.5) * separacion;
+    
+    // Color dinámico basado en su posición
+    let matiz = (x / columnas) * 360;
+    
+    // Efecto "Ola": los de la esquina arrancan primero
+    let retraso = (x + z) * 0.15; 
+    
+    // El bailarín normal
+    let normal = duplicate(molde)
+      .pos(posX, 0, posZ)
+      .color(\`hsl(\${matiz}, 100%, 60%)\`)
+      .delay(retraso)
+      .trail(80)
+      .play();
+      
+    // El clon en reversa (le sumamos 180 al color para que sea su color complementario)
+    duplicate(normal)
+      .reverse()
+      .color(\`hsl(\${ matiz + 180}, 100%, 60%)\`)
+      .play();
+  }
+}
+
+rot(0.05);`
+  },
+  {
+    name: "La Flor de Loto",
+    code: `clear();
+bg("#00030a"); // Fondo azul abisal casi negro
+cam(0, 1000, 1200, 0, 100, 0); // Cámara muy alta, vista de pájaro
+
+// Usamos la pirueta porque al girar crea "cintas" 3D con el trail
+let molde = bvh("pirouette").pos(0, -5000, 0).skeleton(false).play();
+
+let anillos = 3; 
+
+// Vamos a crear 3 anillos concéntricos. 
+// Cada anillo tiene más bailarines, es más grande y está un poco más alto.
+for(let r = 1; r <= anillos; r++) {
+  let cantidad = r * 16;  // Anillo 1: 16, Anillo 2: 32, Anillo 3: 48 (96 en total)
+  let radio = r * 180;
+  
+  for(let i = 0; i < cantidad; i++) {
+    let angulo = (i / cantidad) * Math.PI * 2;
+    
+    let x = Math.cos(angulo) * radio;
+    let z = Math.sin(angulo) * radio;
+    
+    // Magia pura: Los anillos pares miran hacia el centro, los impares hacia afuera.
+    // Esto hará que las cintas de luz de la pirueta se crucen en el aire creando un tejido.
+    let mirar = (r % 2 === 0) ? (-angulo + Math.PI/2) : (-angulo - Math.PI/2);
+    
+    // Calculamos un arcoíris perfecto que se desplaza en cada anillo
+    let matiz = (i / cantidad * 360) + (r * 50);
+    
+    duplicate(molde)
+      .pos(x, (r - 1) * 80, z) // Forma de anfiteatro o flor abierta
+      .rotY(mirar)
+      .scale(0.8 + (r * 0.3)) // Los de fuera son más grandes
+      .color(\`hsl(\${matiz}, 100%, 60%)\`)
+      .trail(45) // Estelas largas para tejer la luz
+      .delay((i * 0.03) + (r * 0.6)) // Retraso en espiral + retraso por anillo = Efecto de florecimiento
+      .play();
+  }
+}
+
+// Ponemos la cámara a orbitar suavemente alrededor de la obra de arte
+rot(0.02);`
   },
   {
     name: "El Hiperboloide de Neón",

@@ -145,21 +145,41 @@
       opacity: 0.9;
     }
 
-    /* 1. Hacemos que la caja principal sea "fantasma" para el ratón */
+    /* Hacemos que la caja principal sea "fantasma" para el ratón */
     #overlay {
       pointer-events: none;
     }
 
-    /* 2. Le devolvemos la interacción a los elementos que sí tocamos */
+    /* Le devolvemos la interacción a los elementos que sí tocamos */
     #bar,
     #code,
     #resizeHandle {
       pointer-events: auto;
     }
+
+    #loader {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #00ffff;
+      font-family: Consolas, monospace;
+      font-size: 24px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px 30px;
+      border-radius: 8px;
+      border: 1px solid #00ffff;
+      display: none;
+      /* Oculto por defecto */
+      pointer-events: none;
+      /* Para que no estorbe a los clics */
+      z-index: 9999;
+    }
   </style>
 </head>
 
 <body>
+  <div id="loader">Cargando... ⏳</div>
   <div id="app">
     <iframe id="preview" sandbox="allow-scripts allow-same-origin"></iframe>
 

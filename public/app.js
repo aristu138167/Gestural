@@ -87,23 +87,35 @@ window.addEventListener("keydown", (e) => {
 });
 
 // --- BOTÓN RANDOM --- 
+const loader = document.getElementById("loader");
 let currentExampleIndex = 0;
+let debounceTimer = null; // El reloj de cuenta atrás
+
 if (randomBtn) {
   randomBtn.addEventListener("click", () => {
+    // 1. Elegir un código nuevo que no sea el actual ni el default
     let randomIndex;
-
-    // Tira los dados repetidamente MIENTRAS el número nuevo sea igual al viejo
     do {
       randomIndex = Math.floor(Math.random() * examples.length);
-    } while (randomIndex === currentExampleIndex);
+    } while (randomIndex === currentExampleIndex || randomIndex === 0);
 
-    // Actualizamos nuestra memoria con el nuevo número ganador
     currentExampleIndex = randomIndex;
+    const selected = examples[currentExampleIndex];
 
-    // Cargamos el código
-    const selected = examples[randomIndex];
+    // 2. Actualizar el texto en pantalla inmediatamente
     codeEl.value = `///// ${selected.name} /////\n${selected.code}`;
-    run();
+
+    // 3. Mostrar el letrero de carga
+    if (loader) loader.style.display = "block";
+
+    // 4. Cancelar la ejecución si el usuario machaca el botón rápido
+    clearTimeout(debounceTimer);
+
+    // 5. Cuenta atrás de 3s antes de ejecutar el motor 3D
+    debounceTimer = setTimeout(() => {
+      run();
+      if (loader) loader.style.display = "none"; // Ocultar el letrero al terminar
+    }, 3000);
   });
 }
 
@@ -153,6 +165,26 @@ window.addEventListener("pointermove", (e) => {
   overlay.style.width = `${w}px`; overlay.style.height = `${h}px`;
 });
 window.addEventListener("pointerup", () => { resizing = false; });
+
+// --- SECUESTRAR EL TABULADOR EN EL EDITOR ---
+codeEl.addEventListener("keydown", function (e) {
+  if (e.key === "Tab") {
+    e.preventDefault(); // Evitamos que el navegador salte al siguiente botón
+
+    // Cogemos la posición actual del cursor
+    const start = this.selectionStart;
+    const end = this.selectionEnd;
+
+    // Insertamos 2 espacios (el estándar en JavaScript)
+    const spaces = "  ";
+
+    // Partimos el texto en dos y metemos los espacios en medio
+    this.value = this.value.substring(0, start) + spaces + this.value.substring(end);
+
+    // Volvemos a colocar el cursor justo después de los espacios
+    this.selectionStart = this.selectionEnd = start + spaces.length;
+  }
+});
 
 // --- ARRANQUE INICIAL ---
 function init() {
