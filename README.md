@@ -15,7 +15,7 @@ From that moment on, their own body becomes the raw material for the artwork. Th
 ## Installation
 
 ```bash
-git clone https://github.com/aristu138167/https://github.com/aristu138167/MotionCanvas.git.git
+git clone https://github.com/aristu138167/https://github.com/aristu138167/MotionCanvas.git
 cd MotionCanvas
 npm install
 npm start
@@ -58,7 +58,7 @@ The editor is designed for a seamless live performance experience:
 
 ## API Reference (The Language)
 
-### 🌍 Global Functions (Environment & Scene)
+### Global Functions (Environment & Scene)
 These functions control the virtual world and the creation of the dancers:
 * **`clear()`**: Instantly clears the entire scene. Removes all skeletons and trails.
 * **`grid(size, divisions)`**: Creates the floor grid. Defaults to `400, 10` if left empty.
@@ -67,7 +67,7 @@ These functions control the virtual world and the creation of the dancers:
 * **`bvh("name")`**: Loads a `.bvh` file from the assets folder and prepares a new dancer (e.g., `let dancer1 = bvh("pirouette")`).
 * **`duplicate(variable)`**: Clones an already created dancer (e.g., `duplicate(dancer1)`).
 
-### 🎛️ Global Modifiers
+### Global Modifiers
 If used on their own, these functions affect all dancers in the scene that don't have their own specific settings:
 * **`speed(value)`**: Global speed multiplier (1 is normal, 2 is double, 0.5 is slow motion).
 * **`pause(boolean)`**: Freezes or resumes all animations (`true`/`false`).
@@ -79,7 +79,7 @@ If used on their own, these functions affect all dancers in the scene that don't
 * **`delay(seconds)`**: Adds a global wait time before the choreography starts.
 * **`skeleton(boolean)`**: Shows or hides the bones globally (useful if you only want to see the trails).
 
-### 🔗 Individual Modifiers (Chainable)
+### Individual Modifiers (Chainable)
 Add these directly after a `bvh()` or `duplicate()` using a dot (`.`) to customize that specific dancer. 
 * **`.play()`**: **Essential!** This must always be the last method in the chain to apply the changes and spawn the dancer in the scene.
 * **`.pos(x, y, z)`**: Moves the dancer across all three axes at once.
