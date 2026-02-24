@@ -1,4 +1,4 @@
-# A Creative Coding Environment for the Artistic Exploration of Motion Capture
+# MotionCanvas: Creative Coding Environment for the Artistic Exploration of Motion Capture
 
 This tool is a web-based creative coding environment designed to transform human movement into video art. The core concept is based on a specific workflow: the user records a video of themselves performing a movement, converts it into a motion capture file (`.bvh`), and imports it into the software. 
 
@@ -15,9 +15,8 @@ From that moment on, their own body becomes the raw material for the artwork. Th
 ## Installation
 
 ```bash
-git clone https://github.com/aristu138167/Threejs-Boilerplate.git
-cd Threejs-Boilerplate
-git checkout sbcode
+git clone https://github.com/aristu138167/https://github.com/aristu138167/MotionCanvas.git.git
+cd MotionCanvas
 npm install
 npm start
 ```
