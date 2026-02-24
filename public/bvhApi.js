@@ -30,6 +30,7 @@ const rigs = [];
 const mixers = [];
 const activeTrails = [];
 let frameCount = 0;
+let runId = 0;
 
 const SB = {
   params: { speed: 1.0, pause: false, showSkeleton: true, globalScale: 1.0, rotSpeed: 0.0, reverse: false, color: null, trail: 0, delay: 0 },
@@ -40,17 +41,38 @@ const SB = {
   bg(color) { return this.background(color); },
 
   clear() {
+    runId++; // Avanzamos el turno
+
+    // 1. Limpiamos bailarines y animaciones
     for (const r of rigs) {
-      if (r.mixer) r.mixer.stopAllAction(); // Limpieza optimizada
+      if (r.mixer) r.mixer.stopAllAction();
       if (r.helper) scene.remove(r.helper);
       if (r.group) scene.remove(r.group);
     }
+
+    // 2. Limpiamos rastros (Trails)
     for (const t of activeTrails) {
       scene.remove(t.mesh);
       t.mesh.geometry.dispose();
       t.mesh.material.dispose();
     }
     activeTrails.length = 0; rigs.length = 0; mixers.length = 0;
+
+    // 3. Buscamos y destruimos TODAS las cuadrículas (Grids)
+    const grids = scene.children.filter(obj => obj.type === "GridHelper");
+    for (const g of grids) {
+      scene.remove(g);
+      g.geometry.dispose();
+      g.material.dispose();
+    }
+
+    // 4. Paramos la rotación de la cámara (por si el código anterior tenía rot())
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 0;
+
+    // 5. Devolvemos el fondo a su color gris oscuro por defecto
+    scene.background = new THREE.Color(0x111111);
+
     return SB;
   },
 
@@ -65,8 +87,12 @@ const SB = {
       color(c) { this._color = c; return this; }, trail(length) { this._trail = length; return this; }, delay(s) { this._delay = s; return this; },
 
       play() {
+        const myRunId = runId;
+
         const loader = new BVHLoader();
         loader.load(this._url, (result) => {
+          if (myRunId !== runId) return;
+
           const root = result.skeleton.bones[0];
 
           // 1. Grupo maestro para posición
@@ -195,3 +221,20 @@ function resize() {
 
 function animate() { resize(); controls.update(); SB._tick(); renderer.render(scene, camera); requestAnimationFrame(animate); }
 animate();
+
+// --- SISTEMA LIVE CODING (GIBBER STYLE) ---
+window.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'execute') {
+    try {
+      // Ejecutamos el código que nos manda el editor al vuelo
+      const ejecutar = new Function(event.data.code);
+      ejecutar();
+    } catch (error) {
+      // Si hay un error (ej. escribes mal una variable), le avisamos a app.js
+      window.parent.postMessage({ type: 'error', message: error.stack || error.message }, '*');
+    }
+  }
+});
+
+// Avisamos a la ventana principal de que el motor ya ha arrancado y está listo
+window.parent.postMessage({ type: 'ready' }, '*');
