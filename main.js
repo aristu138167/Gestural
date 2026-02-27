@@ -8,6 +8,9 @@ function buildPreviewHtml() {
     html, body { margin:0; height:100%; overflow:hidden; background:#111; }
     canvas { width:100%; height:100%; display:block; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+  <video id="videoElement" style="display: none;" autoplay playsinline></video>
   <script type="importmap">
     {
       "imports": {

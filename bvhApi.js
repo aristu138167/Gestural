@@ -31,6 +31,41 @@ const mixers = [];
 const activeTrails = [];
 let frameCount = 0;
 let runId = 0;
+// --- MOTOR DE IA EN TIEMPO REAL (MEDIAPIPE) ---
+const videoElement = document.getElementById('videoElement');
+window.liveLandmarks = null; // Aquí guardaremos tus coordenadas 3D en vivo
+
+// Añadimos window. delante de Pose
+const pose = new window.Pose({
+  locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+  }
+});
+
+pose.setOptions({
+  modelComplexity: 1, smoothLandmarks: true,
+  minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+});
+
+pose.onResults((results) => {
+  if (results.poseWorldLandmarks) {
+    window.liveLandmarks = results.poseWorldLandmarks;
+  }
+});
+
+// Añadimos window. delante de Camera
+const cameraAI = new window.Camera(videoElement, {
+  onFrame: async () => { await pose.send({ image: videoElement }); },
+  width: 640, height: 480
+});
+cameraAI.start();
+
+// Definimos qué puntos se conectan con cuáles para dibujar el monigote
+const POSE_CONNECTIONS = [
+  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // Brazos y hombros
+  [11, 23], [12, 24], [23, 24],                   // Torso
+  [23, 25], [24, 26], [25, 27], [26, 28]           // Piernas
+];
 
 const SB = {
   params: { speed: 1.0, pause: false, showSkeleton: true, globalScale: 1.0, rotSpeed: 0.0, reverse: false, color: null, trail: 0, delay: 0 },
@@ -139,12 +174,71 @@ const SB = {
     return handle;
   },
 
+  live() {
+    const geometry = new THREE.BufferGeometry();
+    const material = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 2 });
+
+    const positions = new Float32Array(POSE_CONNECTIONS.length * 6);
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    const helper = new THREE.LineSegments(geometry, material);
+
+    const rig = {
+      isLive: true,
+      isOld: false,
+      visitedThisRun: true,
+      timeAlive: 0,
+      group: new THREE.Group(),
+      helper: helper,
+      opts: { scale: 100, color: null, trail: 0, delay: 0 }
+    };
+
+    rig.group.add(helper);
+    scene.add(rig.group);
+    rigs.push(rig);
+
+    // EL PROXY COMPLETO: Ahora tiene .pos, .rotY, .z, etc.
+    const p = {
+      _isLive: true, // Etiqueta secreta para que duplicate() sepa qué es
+      x(v) { rig.group.position.x = v; return p; },
+      y(v) { rig.group.position.y = v; return p; },
+      z(v) { rig.group.position.z = v; return p; },
+      pos(x, y, z) { rig.group.position.set(x, y, z); return p; },
+      rotX(v) { rig.group.rotation.x = v; return p; },
+      rotY(v) { rig.group.rotation.y = v; return p; },
+      rotZ(v) { rig.group.rotation.z = v; return p; },
+      scale(v) { rig.opts.scale = v * 100; return p; },
+      color(c) { rig.helper.material.color.set(c); return p; },
+      trail(v) { rig.opts.trail = v; return p; },
+      delay(v) { rig.opts.delay = v; return p; },
+      play() { return p; }
+    };
+    return p;
+  },
+
   duplicate(originalHandle) {
-    if (!originalHandle || !originalHandle._rawFile) throw new Error("duplicate() necesita una variable.");
-    const newHandle = this.bvh(originalHandle._rawFile);
-    // Optimización: Copiamos todos los datos privados de un solo golpe
+    if (!originalHandle) throw new Error("duplicate() necesita una variable.");
+
+    let newHandle;
+
+    // 1. ¿Es un clon de la webcam o de un archivo .bvh?
+    if (originalHandle._isLive) {
+      newHandle = this.live(); // Creamos un nuevo clon de la cámara
+    } else if (originalHandle._rawFile) {
+      newHandle = this.bvh(originalHandle._rawFile); // Creamos un clon del archivo
+    } else {
+      throw new Error("Objeto no válido para duplicar.");
+    }
+
+    // 2. Tu Optimización: Copiamos todos los datos privados de un solo golpe
     const keys = ["_x", "_y", "_z", "_scale", "_rotY", "_showSkeleton", "_speed", "_reverse", "_color", "_trail", "_delay"];
-    keys.forEach(k => newHandle[k] = originalHandle[k]);
+    keys.forEach(k => {
+      // Solo copiamos si la propiedad existe en el original (por si al Live le falta alguna)
+      if (originalHandle[k] !== undefined) {
+        newHandle[k] = originalHandle[k];
+      }
+    });
+
     return newHandle;
   },
 
@@ -162,7 +256,29 @@ const SB = {
   _tick() {
     const dt = clock.getDelta(); frameCount++;
     for (const r of rigs) {
-      if (r.group) {
+      // --- MAGIA LIVE (AÑADIDO PARA LA WEBCAM) ---
+      if (r.isLive && window.liveLandmarks && r.helper) {
+        const positions = r.helper.geometry.attributes.position.array;
+        let index = 0;
+        const scale = (r.opts.scale ?? SB.params.globalScale); // Quitamos el *100 de aquí porque ya lo hace el proxy
+
+        // Actualizamos las líneas de tu cuerpo 3D
+        for (const [p1, p2] of POSE_CONNECTIONS) {
+          const lm1 = window.liveLandmarks[p1];
+          const lm2 = window.liveLandmarks[p2];
+
+          positions[index++] = lm1.x * scale;
+          positions[index++] = -lm1.y * scale;
+          positions[index++] = -lm1.z * scale;
+
+          positions[index++] = lm2.x * scale;
+          positions[index++] = -lm2.y * scale;
+          positions[index++] = -lm2.z * scale;
+        }
+        r.helper.geometry.attributes.position.needsUpdate = true;
+      }
+      // ------------------------------------------
+      if (r.group && !r.isLive) {
         const s = (r.opts.scale ?? SB.params.globalScale);
         r.group.scale.setScalar(s);
       }
@@ -216,6 +332,7 @@ window.rot = (v) => SB.rot(v); window.reverse = (v) => SB.reverse(v);
 window.color = (c) => SB.color(c); window.trail = (l) => SB.trail(l);
 window.delay = (s) => SB.delay(s); window.duplicate = (h) => SB.duplicate(h);
 window.background = (c) => SB.background(c); window.bg = (c) => SB.bg(c);
+window.live = () => SB.live();
 
 function resize() {
   const w = canvas.clientWidth; const h = canvas.clientHeight;
