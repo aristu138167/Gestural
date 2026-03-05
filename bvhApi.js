@@ -74,7 +74,7 @@ const SB = {
     const url = fileOrUrl.startsWith("http") ? fileOrUrl : "./assets/" + fileOrUrl + ".bvh";
 
     const handle = {
-      _rawFile: fileOrUrl, _url: url, _x: 0, _y: 0, _z: 0, _rotX: 0, _rotY: 0, _rotZ: 0, _scale: null, _showSkeleton: null, _speed: null, _reverse: null, _color: null, _trail: null, _delay: null,
+      _rawFile: fileOrUrl, _url: url, _x: 0, _y: 0, _z: 0, _rotX: 0, _rotY: 0, _rotZ: 0, _scale: null, _showSkeleton: null, _speed: null, _reverse: null, _color: null, _trail: null, _delay: null, _dummy: null,
 
       _isPlaying: false,
 
@@ -88,7 +88,8 @@ const SB = {
       rotX(r) { this._rotX = r; return this; }, rotY(r) { this._rotY = r; return this; }, rotZ(r) { this._rotZ = r; return this; },
       scale(s) { this._scale = s; return this; }, skeleton(v) { this._showSkeleton = v; return this; },
       speed(v) { this._speed = v; return this; }, reverse(v = true) { this._reverse = v; return this; },
-      color(c) { this._color = c; return this; }, trail(length) { this._trail = length; return this; }, delay(s) { this._delay = s; return this; },
+      color(c) { this._color = c; return this; }, trail(length) { this._trail = length; return this; },
+      delay(s) { this._delay = s; return this; }, dummy(num) { this._dummy = num; return this; },
 
       play() {
         this._isPlaying = true;
@@ -109,6 +110,7 @@ const SB = {
         nextHandle._speed = this._speed;
         nextHandle._trail = this._trail;
         nextHandle._showSkeleton = this._showSkeleton;
+        nextHandle._dummy = this._dummy;
         // También hereda la rotación inicial para mantener la orientación
         nextHandle._rotX = this._rotX;
         nextHandle._rotY = this._rotY;
@@ -158,6 +160,71 @@ const SB = {
 
         scene.add(helper);
 
+        if (handle._dummy !== null && handle._dummy > 0) {
+          helper.visible = false;
+
+          const col = handle._color ?? SB.params.color ?? "#ffffff";
+          const dummyMat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(col),
+            roughness: 0.5,
+            metalness: 0.2
+          });
+
+          const baseSphereGeom = new THREE.SphereGeometry(1, 12, 12);
+          const baseCylGeom = new THREE.CylinderGeometry(0.4, 1, 1, 8);
+          baseCylGeom.translate(0, 0.5, 0);
+
+          root.traverse((bone) => {
+            if (bone.isBone) {
+
+              let hasChildren = false;
+              let maxChildLength = 0;
+
+              // 1. Trazamos los cilindros hacia los siguientes huesos
+              if (bone.children.length > 0) {
+                bone.children.forEach((child) => {
+                  if (child.isBone) {
+                    hasChildren = true;
+                    const length = child.position.length();
+                    maxChildLength = Math.max(maxChildLength, length);
+
+                    if (length > 0.01) {
+                      const boneThickness = Math.min(handle._dummy, length * 0.25);
+                      const mesh = new THREE.Mesh(baseCylGeom, dummyMat);
+                      mesh.scale.set(boneThickness, length, boneThickness);
+                      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), child.position.clone().normalize());
+                      bone.add(mesh);
+                    }
+                  }
+                });
+              }
+
+              // 2. Colocamos la Rótula exacta para esta articulación
+              let jointSize = 0;
+              if (hasChildren) {
+                // Es una articulación central (codo, muñeca, nudillo base). 
+                // La hacemos un 20% más grande que el hueso para que tape la unión perfectamente.
+                const boneThickness = Math.min(handle._dummy, maxChildLength * 0.25);
+                jointSize = boneThickness * 1.2;
+              } else {
+                // Es una punta final (yema del dedo, cabeza).
+                // Como el cilindro acababa estrechándose al 40%, hacemos esta esfera suave para rematar.
+                const length = bone.position.length();
+                const boneThickness = Math.min(handle._dummy, length * 0.25);
+                jointSize = boneThickness * 0.45;
+              }
+
+              if (jointSize > 0) {
+                const jointMesh = new THREE.Mesh(baseSphereGeom, dummyMat);
+                jointMesh.scale.setScalar(jointSize);
+                bone.add(jointMesh);
+              }
+            }
+          });
+
+          root.visible = !(handle._isChained && !handle._isHead);
+        }
+
         const mixer = new THREE.AnimationMixer(root);
         const action = mixer.clipAction(result.clip);
 
@@ -168,7 +235,6 @@ const SB = {
 
         action.play();
 
-        // ¡¡¡AQUÍ ESTÁ LA SOLUCIÓN A LA CARRERA FANTASMA!!!
         // Si el usuario no le dio a play, o si es un relevo en espera, NACE PAUSADO.
         if (!handle._isPlaying || (handle._isChained && !handle._isHead)) {
           action.paused = true;
@@ -180,6 +246,7 @@ const SB = {
         mixer.addEventListener('finished', (e) => {
           if (handle._isChained && handle._nextHandle) {
             helper.visible = false;
+            if (handle._dummy) root.visible = false;
 
             // Función interna para ejecutar el relevo
             const ejecutarRelevo = (nextRig) => {
@@ -199,7 +266,11 @@ const SB = {
               nextRig.group.position.x += deltaX;
               nextRig.group.position.z += deltaZ;
 
-              nextRig.helper.visible = (handle._nextHandle._showSkeleton ?? SB.params.showSkeleton);
+              if (handle._nextHandle._dummy) {
+                nextRig.root.visible = true; // Enciende al cuerpo sólido
+              } else {
+                nextRig.helper.visible = (handle._nextHandle._showSkeleton ?? SB.params.showSkeleton); // Enciende palitos
+              }
               nextRig.timeAlive = 0; // RESET DEL RELOJ
               nextRig.action.play();
             };
@@ -241,7 +312,7 @@ const SB = {
 
     // 2. Creamos la nueva locomotora
     let newCurrent = this.bvh(startOrig._rawFile);
-    const keysToCopy = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_trail", "_delay"];
+    const keysToCopy = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_trail", "_delay", "_dummy"];
 
     keysToCopy.forEach(k => newCurrent[k] = startOrig[k]);
     const newHead = newCurrent; // Guardamos el inicio para devolverlo al final
@@ -288,7 +359,8 @@ const SB = {
       const delayTime = r.opts.delay ?? SB.params.delay;
 
       // Control de trails
-      if (!SB.params.pause && trailLen > 0 && frameCount % 6 === 0 && r.helper && r.helper.visible && r.timeAlive >= delayTime) {
+      const isVisible = r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible);
+      if (!SB.params.pause && trailLen > 0 && frameCount % 6 === 0 && isVisible && r.timeAlive >= delayTime) {
         const snapGeom = r.helper.geometry.clone(); snapGeom.applyMatrix4(r.helper.matrixWorld);
         const snapMat = r.helper.material.clone(); snapMat.transparent = true; snapMat.opacity = 0.6;
         const snapLine = new THREE.LineSegments(snapGeom, snapMat); scene.add(snapLine);
@@ -305,8 +377,11 @@ const SB = {
       for (let i = 0; i < mixers.length; i++) {
         const r = rigs[i]; const delayTime = r.opts?.delay ?? SB.params.delay;
 
-        // CORRECCIÓN: Si está esperando su relevo (invisible), no envejece.
-        if (r.handle._isChained && r.handle !== r.handle._chainHead && !r.helper.visible && r.timeAlive === 0) {
+        // Comprobamos la visibilidad real (si tiene dummy, miramos el root; si no, el helper)
+        const isVisible = r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible);
+
+        // Si está esperando su relevo (invisible de verdad), no envejece.
+        if (r.handle._isChained && r.handle !== r.handle._chainHead && !isVisible && r.timeAlive === 0) {
           continue;
         }
 
