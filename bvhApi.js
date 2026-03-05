@@ -41,16 +41,14 @@ const SB = {
   bg(color) { return this.background(color); },
 
   clear() {
-    runId++; // Avanzamos el turno
+    runId++;
 
-    // 1. Limpiamos bailarines y animaciones
     for (const r of rigs) {
       if (r.mixer) r.mixer.stopAllAction();
       if (r.helper) scene.remove(r.helper);
       if (r.group) scene.remove(r.group);
     }
 
-    // 2. Limpiamos rastros (Trails)
     for (const t of activeTrails) {
       scene.remove(t.mesh);
       t.mesh.geometry.dispose();
@@ -58,7 +56,6 @@ const SB = {
     }
     activeTrails.length = 0; rigs.length = 0; mixers.length = 0;
 
-    // 3. Buscamos y destruimos TODAS las cuadrículas (Grids)
     const grids = scene.children.filter(obj => obj.type === "GridHelper");
     for (const g of grids) {
       scene.remove(g);
@@ -66,11 +63,8 @@ const SB = {
       g.material.dispose();
     }
 
-    // 4. Paramos la rotación de la cámara (por si el código anterior tenía rot())
     controls.autoRotate = false;
     controls.autoRotateSpeed = 0;
-
-    // 5. Devolvemos el fondo a su color gris oscuro por defecto
     scene.background = new THREE.Color(0x111111);
 
     return SB;
@@ -78,10 +72,16 @@ const SB = {
 
   bvh(fileOrUrl) {
     const url = fileOrUrl.startsWith("http") ? fileOrUrl : "./assets/" + fileOrUrl + ".bvh";
+
     const handle = {
       _rawFile: fileOrUrl, _url: url, _x: 0, _y: 0, _z: 0, _rotX: 0, _rotY: 0, _rotZ: 0, _scale: null, _showSkeleton: null, _speed: null, _reverse: null, _color: null, _trail: null, _delay: null,
 
-      _isPlaying: false, // NUEVO: Por defecto nace congelado
+      _isPlaying: false,
+
+      _isChained: false,
+      _isHead: true,
+      _chainHead: null,
+      _nextHandle: null,
 
       x(v) { this._x = v; return this; }, y(v) { this._y = v; return this; }, z(v) { this._z = v; return this; },
       pos(x, y, z) { this._x = x; this._y = y; this._z = z; return this; },
@@ -90,18 +90,44 @@ const SB = {
       speed(v) { this._speed = v; return this; }, reverse(v = true) { this._reverse = v; return this; },
       color(c) { this._color = c; return this; }, trail(length) { this._trail = length; return this; }, delay(s) { this._delay = s; return this; },
 
-      // NUEVO: El play ahora descongela la línea de tiempo
       play() {
         this._isPlaying = true;
-        // Si ya cargó en escena, lo despausamos al vuelo
         const rig = rigs.find(r => r.handle === this);
         if (rig && rig.action) rig.action.paused = false;
         return this;
+      },
+
+      nextBvh(nextFile) {
+        const nextHandle = SB.bvh(nextFile);
+        nextHandle._isHead = false;
+        nextHandle._isPlaying = this._isPlaying;
+
+        // --- NUEVO: HERENCIA DE PROPIEDADES ---
+        // El nuevo bailarín hereda el aspecto y configuración del anterior
+        nextHandle._color = this._color;
+        nextHandle._scale = this._scale;
+        nextHandle._speed = this._speed;
+        nextHandle._trail = this._trail;
+        nextHandle._showSkeleton = this._showSkeleton;
+        // También hereda la rotación inicial para mantener la orientación
+        nextHandle._rotX = this._rotX;
+        nextHandle._rotY = this._rotY;
+        nextHandle._rotZ = this._rotZ;
+        // --------------------------------------
+
+        this._isChained = true;
+        nextHandle._isChained = true;
+
+        nextHandle._chainHead = this._chainHead || this;
+        nextHandle._nextHandle = nextHandle._chainHead;
+        this._nextHandle = nextHandle;
+
+        return nextHandle;
       }
     };
 
-    // Auto-carga la geometría, pero respeta el estado de _isPlaying
     const myRunId = runId;
+
     setTimeout(() => {
       const loader = new BVHLoader();
       loader.load(handle._url, (result) => {
@@ -123,24 +149,81 @@ const SB = {
         helper.skeleton = result.skeleton;
         const col = handle._color ?? SB.params.color;
         if (col) { helper.material.vertexColors = false; helper.material.color.set(col); }
-        helper.visible = (handle._showSkeleton ?? SB.params.showSkeleton);
+
+        if (handle._isChained && !handle._isHead) {
+          helper.visible = false;
+        } else {
+          helper.visible = (handle._showSkeleton ?? SB.params.showSkeleton);
+        }
+
         scene.add(helper);
 
         const mixer = new THREE.AnimationMixer(root);
         const action = mixer.clipAction(result.clip);
-        action.play(); // Inicia el setup interno de Three.js
 
-        // MAGIA: Si no tiene .play(), lo pausamos en el fotograma 1
-        if (!handle._isPlaying) {
+        if (handle._isChained) {
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = true;
+        }
+
+        action.play();
+
+        // ¡¡¡AQUÍ ESTÁ LA SOLUCIÓN A LA CARRERA FANTASMA!!!
+        // Si el usuario no le dio a play, o si es un relevo en espera, NACE PAUSADO.
+        if (!handle._isPlaying || (handle._isChained && !handle._isHead)) {
           action.paused = true;
         }
 
         const isReversed = handle._reverse ?? SB.params.reverse;
         if (isReversed) { action.time = result.clip.duration; }
 
+        mixer.addEventListener('finished', (e) => {
+          if (handle._isChained && handle._nextHandle) {
+            helper.visible = false;
+
+            // Función interna para ejecutar el relevo
+            const ejecutarRelevo = (nextRig) => {
+              const currentPos = new THREE.Vector3();
+              root.getWorldPosition(currentPos);
+
+              nextRig.action.reset();
+              nextRig.action.paused = false;
+              nextRig.mixer.update(0);
+
+              const nextRootStartPos = new THREE.Vector3();
+              nextRig.root.getWorldPosition(nextRootStartPos);
+
+              const deltaX = currentPos.x - nextRootStartPos.x;
+              const deltaZ = currentPos.z - nextRootStartPos.z;
+
+              nextRig.group.position.x += deltaX;
+              nextRig.group.position.z += deltaZ;
+
+              nextRig.helper.visible = (handle._nextHandle._showSkeleton ?? SB.params.showSkeleton);
+              nextRig.timeAlive = 0; // RESET DEL RELOJ
+              nextRig.action.play();
+            };
+
+            // Buscamos al siguiente
+            const nextRig = rigs.find(r => r.handle === handle._nextHandle);
+
+            if (nextRig) {
+              ejecutarRelevo(nextRig);
+            } else {
+              // CORRECCIÓN: Si el archivo es muy pesado y aún no ha cargado, esperamos.
+              const waitInterval = setInterval(() => {
+                const delayedRig = rigs.find(r => r.handle === handle._nextHandle);
+                if (delayedRig) {
+                  clearInterval(waitInterval);
+                  ejecutarRelevo(delayedRig);
+                }
+              }, 50); // Comprueba cada 50 milisegundos si ya llegó
+            }
+          }
+        });
+
         rigs.push({
-          handle, // Guardamos la firma para poder despausarlo después
-          group, pivot, root, helper, mixer, action, clip: result.clip, timeAlive: 0,
+          handle, group, pivot, root, helper, mixer, action, clip: result.clip, timeAlive: 0,
           opts: { rotX: handle._rotX, rotY: handle._rotY, rotZ: handle._rotZ, speed: (handle._speed ?? 1.0), showSkeleton: (handle._showSkeleton ?? null), scale: (handle._scale ?? null), reverse: handle._reverse, color: handle._color, trail: handle._trail, delay: handle._delay }
         });
         mixers.push(mixer);
@@ -152,14 +235,34 @@ const SB = {
 
   duplicate(originalHandle) {
     if (!originalHandle || !originalHandle._rawFile) throw new Error("duplicate() necesita una variable.");
-    const newHandle = this.bvh(originalHandle._rawFile);
-    const keys = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_trail", "_delay"];
-    keys.forEach(k => newHandle[k] = originalHandle[k]);
 
-    // Si el original se estaba moviendo, la copia también
-    if (originalHandle._isPlaying) newHandle.play();
+    // 1. Buscamos la "locomotora" (el primer movimiento de la cadena original)
+    const startOrig = originalHandle._chainHead || originalHandle;
 
-    return newHandle;
+    // 2. Creamos la nueva locomotora
+    let newCurrent = this.bvh(startOrig._rawFile);
+    const keysToCopy = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_trail", "_delay"];
+
+    keysToCopy.forEach(k => newCurrent[k] = startOrig[k]);
+    const newHead = newCurrent; // Guardamos el inicio para devolverlo al final
+
+    // 3. Si era una cadena, recorremos todos los vagones copiándolos uno a uno
+    if (startOrig._isChained) {
+      let currentOrig = startOrig._nextHandle;
+
+      // Damos la vuelta al círculo hasta volver al inicio
+      while (currentOrig && currentOrig !== startOrig) {
+        newCurrent = newCurrent.nextBvh(currentOrig._rawFile);
+        keysToCopy.forEach(k => newCurrent[k] = currentOrig[k]);
+        currentOrig = currentOrig._nextHandle;
+      }
+    }
+
+    if (startOrig._isPlaying) newHead.play();
+
+    // 4. Devolvemos la nueva locomotora
+    // Así, al hacer duplicate(a).x(20), estás moviendo el punto de partida de toda la cadena
+    return newHead;
   },
 
   speed(v) { SB.params.speed = v; return SB; }, pause(v = true) { SB.params.pause = v; return SB; },
@@ -181,11 +284,11 @@ const SB = {
         r.group.scale.setScalar(s);
       }
 
-      if (r.helper) { r.helper.visible = (r.opts.showSkeleton ?? SB.params.showSkeleton); }
-
       const trailLen = r.opts.trail ?? SB.params.trail;
       const delayTime = r.opts.delay ?? SB.params.delay;
-      if (!SB.params.pause && trailLen > 0 && frameCount % 6 === 0 && r.helper && r.timeAlive >= delayTime) {
+
+      // Control de trails
+      if (!SB.params.pause && trailLen > 0 && frameCount % 6 === 0 && r.helper && r.helper.visible && r.timeAlive >= delayTime) {
         const snapGeom = r.helper.geometry.clone(); snapGeom.applyMatrix4(r.helper.matrixWorld);
         const snapMat = r.helper.material.clone(); snapMat.transparent = true; snapMat.opacity = 0.6;
         const snapLine = new THREE.LineSegments(snapGeom, snapMat); scene.add(snapLine);
@@ -201,6 +304,11 @@ const SB = {
     if (!SB.params.pause) {
       for (let i = 0; i < mixers.length; i++) {
         const r = rigs[i]; const delayTime = r.opts?.delay ?? SB.params.delay;
+
+        // CORRECCIÓN: Si está esperando su relevo (invisible), no envejece.
+        if (r.handle._isChained && r.handle !== r.handle._chainHead && !r.helper.visible && r.timeAlive === 0) {
+          continue;
+        }
 
         const tiempoAnterior = r.timeAlive;
         r.timeAlive += dt;
@@ -239,19 +347,15 @@ function resize() {
 function animate() { resize(); controls.update(); SB._tick(); renderer.render(scene, camera); requestAnimationFrame(animate); }
 animate();
 
-// --- SISTEMA LIVE CODING (GIBBER STYLE) ---
 window.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'execute') {
     try {
-      // Ejecutamos el código que nos manda el editor al vuelo
       const ejecutar = new Function(event.data.code);
       ejecutar();
     } catch (error) {
-      // Si hay un error (ej. escribes mal una variable), le avisamos a app.js
       window.parent.postMessage({ type: 'error', message: error.stack || error.message }, '*');
     }
   }
 });
 
-// Avisamos a la ventana principal de que el motor ya ha arrancado y está listo
 window.parent.postMessage({ type: 'ready' }, '*');
