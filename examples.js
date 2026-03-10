@@ -6,11 +6,9 @@ grid(800, 20);
 cam(0, 200, 450, 0, 120, 0);
 
 // Carga de archivos .bvh desde la carpeta assets
-bvh("A_test").x(0).play();
-bvh("B_test").x(-60).play();
-bvh("C_test").x(60).play();
-bvh("pirouette").x(100).play();
-bvh("ejercicios_rehabilitacion").x(-100).z(-160).play();
+bvh("pirouette").play();
+bvh("rehabilitation_exercise").x(-100).z(-160).play();
+bvh("warming1").x(100).z(-160).play();
 
 // Modificadores globales (afectan a todos los bailarines)
 speed(1);

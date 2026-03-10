@@ -4,6 +4,9 @@ import { BVHLoader } from "three/addons/loaders/BVHLoader.js";
 
 // --- CONFIGURACIÓN DE ESCENA ---
 const canvas = document.getElementById("c");
+// Auto-focus para el teclado
+canvas.addEventListener("pointerdown", () => canvas.focus());
+
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
@@ -32,6 +35,16 @@ const activeTrails = [];
 let frameCount = 0;
 let runId = 0;
 
+// Variables para interactividad
+let bvhCounter = 0;
+let selectedRig = null;
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+const selectionBox = new THREE.BoxHelper(new THREE.Group(), 0xffff00);
+selectionBox.visible = false;
+scene.add(selectionBox);
+
 const SB = {
   params: { speed: 1.0, pause: false, showSkeleton: true, globalScale: 1.0, rotSpeed: 0.0, reverse: false, color: null, color2: null, trail: 0, delay: 0 },
 
@@ -42,6 +55,9 @@ const SB = {
 
   clear() {
     runId++;
+    bvhCounter = 0;
+    selectedRig = null;
+    selectionBox.visible = false;
 
     for (const r of rigs) {
       if (r.mixer) r.mixer.stopAllAction();
@@ -70,18 +86,16 @@ const SB = {
     return SB;
   },
 
-  bvh(fileOrUrl) {
+  bvh(fileOrUrl, isChained = false) {
     const url = fileOrUrl.startsWith("http") ? fileOrUrl : "./assets/" + fileOrUrl + ".bvh";
 
     const handle = {
-      _rawFile: fileOrUrl, _url: url, _x: 0, _y: 0, _z: 0, _rotX: 0, _rotY: 0, _rotZ: 0, _scale: null, _showSkeleton: null, _speed: null, _reverse: null, _color: null, _color2: null, _trail: null, _delay: null, _dummy: null,
+      _rawFile: fileOrUrl, _url: url, _x: 0, _y: 0, _z: 0, _rotX: 0, _rotY: 0, _rotZ: 0,
+      _scale: null, _showSkeleton: null, _speed: null, _reverse: null,
+      _color: null, _color2: null, _trail: null, _delay: null, _dummy: null,
+      _codeIndex: (!isChained ? bvhCounter++ : null),
 
-      _isPlaying: false,
-
-      _isChained: false,
-      _isHead: true,
-      _chainHead: null,
-      _nextHandle: null,
+      _isPlaying: false, _isChained: false, _isHead: true, _chainHead: null, _nextHandle: null,
 
       x(v) { this._x = v; return this; }, y(v) { this._y = v; return this; }, z(v) { this._z = v; return this; },
       pos(x, y, z) { this._x = x; this._y = y; this._z = z; return this; },
@@ -99,11 +113,10 @@ const SB = {
       },
 
       nextBvh(nextFile) {
-        const nextHandle = SB.bvh(nextFile);
+        const nextHandle = SB.bvh(nextFile, true);
         nextHandle._isHead = false;
         nextHandle._isPlaying = this._isPlaying;
 
-        // El nuevo bailarín hereda el aspecto y configuración del anterior
         nextHandle._color = this._color;
         nextHandle._color2 = this._color2;
         nextHandle._scale = this._scale;
@@ -111,14 +124,12 @@ const SB = {
         nextHandle._trail = this._trail;
         nextHandle._showSkeleton = this._showSkeleton;
         nextHandle._dummy = this._dummy;
-        // También hereda la rotación inicial para mantener la orientación
         nextHandle._rotX = this._rotX;
         nextHandle._rotY = this._rotY;
         nextHandle._rotZ = this._rotZ;
 
         this._isChained = true;
         nextHandle._isChained = true;
-
         nextHandle._chainHead = this._chainHead || this;
         nextHandle._nextHandle = nextHandle._chainHead;
         this._nextHandle = nextHandle;
@@ -135,7 +146,6 @@ const SB = {
         if (myRunId !== runId) return;
 
         const root = result.skeleton.bones[0];
-
         const group = new THREE.Group();
         group.position.set(handle._x, handle._y, handle._z);
 
@@ -149,38 +159,31 @@ const SB = {
         const helper = new THREE.SkeletonHelper(root);
         helper.skeleton = result.skeleton;
 
+        // --- SISTEMA DE COLOR Y DEGRADADO ---
         const col1 = handle._color ?? SB.params.color;
         const col2 = handle._color2 ?? SB.params.color2;
+        let useGradient = false;
+        let colorInicio, colorFin;
 
         if (col1 && !col2) {
-          // Si solo hay un color, pintamos sólido normal
+          useGradient = false; colorInicio = new THREE.Color(col1);
           helper.material.vertexColors = false;
-          helper.material.color.set(col1);
+          helper.material.color.set(colorInicio);
         } else {
-          // Si hay dos colores (o ninguno), activamos el DEGRADADO DE LÍNEAS
+          useGradient = true;
+          colorInicio = new THREE.Color(col1 || "#00ffcc");
+          colorFin = new THREE.Color(col2 || "#0055ff");
           helper.material.vertexColors = true;
           helper.material.color.set(0xffffff);
-
-          // Si no nos pasan colores, usamos verde y azul por defecto
-          const colorInicio = new THREE.Color(col1 || "#00ffcc"); // Base
-          const colorFin = new THREE.Color(col2 || "#0055ff");    // Punta
 
           const geometry = helper.geometry;
           const positions = geometry.attributes.position;
           const colors = new Float32Array(positions.count * 3);
 
           for (let i = 0; i < positions.count; i += 2) {
-            // Vértice base
-            colors[i * 3] = colorInicio.r;
-            colors[i * 3 + 1] = colorInicio.g;
-            colors[i * 3 + 2] = colorInicio.b;
-
-            // Vértice punta
-            colors[(i + 1) * 3] = colorFin.r;
-            colors[(i + 1) * 3 + 1] = colorFin.g;
-            colors[(i + 1) * 3 + 2] = colorFin.b;
+            colors[i * 3] = colorInicio.r; colors[i * 3 + 1] = colorInicio.g; colors[i * 3 + 2] = colorInicio.b;
+            colors[(i + 1) * 3] = colorFin.r; colors[(i + 1) * 3 + 1] = colorFin.g; colors[(i + 1) * 3 + 2] = colorFin.b;
           }
-
           geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         }
 
@@ -189,57 +192,33 @@ const SB = {
         } else {
           helper.visible = (handle._showSkeleton ?? SB.params.showSkeleton);
         }
-
         scene.add(helper);
 
+        // --- CREACIÓN DEL DUMMY ---
         if (handle._dummy !== null && handle._dummy > 0) {
           helper.visible = false;
 
-          // Comprobamos los colores exactos
-          const col1 = handle._color ?? SB.params.color;
-          const col2 = handle._color2 ?? SB.params.color2;
-
-          let useGradient = false;
-          let colorInicio, colorFin;
-
-          if (col1 && !col2) {
-            // CASO A: Solo hay un color -> Color sólido
-            useGradient = false;
-            colorInicio = new THREE.Color(col1);
-          } else {
-            // CASO B: Hay dos colores o ninguno -> Degradado
-            useGradient = true;
-            colorInicio = new THREE.Color(col1 || "#00ffcc");
-            colorFin = new THREE.Color(col2 || "#0055ff");
-          }
-
-          // 1. MATERIAL DEL DUMMY
           const dummyMat = new THREE.MeshStandardMaterial({
-            color: useGradient ? 0xffffff : colorInicio, // Blanco si hay degradado, color sólido si no
-            vertexColors: useGradient, // Solo activamos colores por vértice si hay degradado
-            roughness: 0.5,
-            metalness: 0.2
+            color: useGradient ? 0xffffff : colorInicio,
+            vertexColors: useGradient,
+            roughness: 0.5, metalness: 0.2
           });
 
-          // 2. GEOMETRÍAS BASE
           const baseSphereGeom = new THREE.SphereGeometry(1, 12, 12);
           const baseCylGeom = new THREE.CylinderGeometry(0.4, 1, 1, 8);
           baseCylGeom.translate(0, 0.5, 0);
 
-          // 3. MAGIA DEL DEGRADADO (Solo se ejecuta si useGradient es true)
           if (useGradient) {
             const cylPos = baseCylGeom.attributes.position;
             const cylColors = [];
             for (let i = 0; i < cylPos.count; i++) {
-              const y = cylPos.getY(i);
-              const mixedColor = colorInicio.clone().lerp(colorFin, y);
+              const mixedColor = colorInicio.clone().lerp(colorFin, cylPos.getY(i));
               cylColors.push(mixedColor.r, mixedColor.g, mixedColor.b);
             }
             baseCylGeom.setAttribute('color', new THREE.Float32BufferAttribute(cylColors, 3));
 
-            const spherePos = baseSphereGeom.attributes.position;
             const sphereColors = [];
-            for (let i = 0; i < spherePos.count; i++) {
+            for (let i = 0; i < baseSphereGeom.attributes.position.count; i++) {
               sphereColors.push(colorInicio.r, colorInicio.g, colorInicio.b);
             }
             baseSphereGeom.setAttribute('color', new THREE.Float32BufferAttribute(sphereColors, 3));
@@ -247,11 +226,7 @@ const SB = {
 
           root.traverse((bone) => {
             if (bone.isBone) {
-
-              let hasChildren = false;
-              let maxChildLength = 0;
-
-              // 1. Trazamos los cilindros hacia los siguientes huesos
+              let hasChildren = false; let maxChildLength = 0;
               if (bone.children.length > 0) {
                 bone.children.forEach((child) => {
                   if (child.isBone) {
@@ -270,16 +245,11 @@ const SB = {
                 });
               }
 
-              // 2. Colocamos la Rótula exacta para esta articulación
               let jointSize = 0;
               if (hasChildren) {
-                // Es una articulación central (codo, muñeca, nudillo base). 
-                // La hacemos un 20% más grande que el hueso para que tape la unión perfectamente.
                 const boneThickness = Math.min(handle._dummy, maxChildLength * 0.25);
                 jointSize = boneThickness * 1.2;
               } else {
-                // Es una punta final (yema del dedo, cabeza).
-                // Como el cilindro acababa estrechándose al 40%, hacemos esta esfera suave para rematar.
                 const length = bone.position.length();
                 const boneThickness = Math.min(handle._dummy, length * 0.25);
                 jointSize = boneThickness * 0.45;
@@ -299,17 +269,9 @@ const SB = {
         const mixer = new THREE.AnimationMixer(root);
         const action = mixer.clipAction(result.clip);
 
-        if (handle._isChained) {
-          action.setLoop(THREE.LoopOnce, 1);
-          action.clampWhenFinished = true;
-        }
-
+        if (handle._isChained) { action.setLoop(THREE.LoopOnce, 1); action.clampWhenFinished = true; }
         action.play();
-
-        // Si el usuario no le dio a play, o si es un relevo en espera, NACE PAUSADO.
-        if (!handle._isPlaying || (handle._isChained && !handle._isHead)) {
-          action.paused = true;
-        }
+        if (!handle._isPlaying || (handle._isChained && !handle._isHead)) { action.paused = true; }
 
         const isReversed = handle._reverse ?? SB.params.reverse;
         if (isReversed) { action.time = result.clip.duration; }
@@ -319,54 +281,32 @@ const SB = {
             helper.visible = false;
             if (handle._dummy) root.visible = false;
 
-            // Función interna para ejecutar el relevo
             const ejecutarRelevo = (nextRig) => {
-              const currentPos = new THREE.Vector3();
-              root.getWorldPosition(currentPos);
+              const currentPos = new THREE.Vector3(); root.getWorldPosition(currentPos);
+              nextRig.action.reset(); nextRig.action.paused = false; nextRig.mixer.update(0);
+              const nextRootStartPos = new THREE.Vector3(); nextRig.root.getWorldPosition(nextRootStartPos);
+              nextRig.group.position.x += (currentPos.x - nextRootStartPos.x);
+              nextRig.group.position.z += (currentPos.z - nextRootStartPos.z);
 
-              nextRig.action.reset();
-              nextRig.action.paused = false;
-              nextRig.mixer.update(0);
-
-              const nextRootStartPos = new THREE.Vector3();
-              nextRig.root.getWorldPosition(nextRootStartPos);
-
-              const deltaX = currentPos.x - nextRootStartPos.x;
-              const deltaZ = currentPos.z - nextRootStartPos.z;
-
-              nextRig.group.position.x += deltaX;
-              nextRig.group.position.z += deltaZ;
-
-              if (handle._nextHandle._dummy) {
-                nextRig.root.visible = true; // Enciende al cuerpo sólido
-              } else {
-                nextRig.helper.visible = (handle._nextHandle._showSkeleton ?? SB.params.showSkeleton); // Enciende palitos
-              }
-              nextRig.timeAlive = 0; // RESET DEL RELOJ
-              nextRig.action.play();
+              if (handle._nextHandle._dummy) { nextRig.root.visible = true; }
+              else { nextRig.helper.visible = (handle._nextHandle._showSkeleton ?? SB.params.showSkeleton); }
+              nextRig.timeAlive = 0; nextRig.action.play();
             };
 
-            // Buscamos al siguiente
             const nextRig = rigs.find(r => r.handle === handle._nextHandle);
-
-            if (nextRig) {
-              ejecutarRelevo(nextRig);
-            } else {
-              // CORRECCIÓN: Si el archivo es muy pesado y aún no ha cargado, esperamos.
+            if (nextRig) { ejecutarRelevo(nextRig); }
+            else {
               const waitInterval = setInterval(() => {
                 const delayedRig = rigs.find(r => r.handle === handle._nextHandle);
-                if (delayedRig) {
-                  clearInterval(waitInterval);
-                  ejecutarRelevo(delayedRig);
-                }
-              }, 50); // Comprueba cada 50 milisegundos si ya llegó
+                if (delayedRig) { clearInterval(waitInterval); ejecutarRelevo(delayedRig); }
+              }, 50);
             }
           }
         });
 
         rigs.push({
           handle, group, pivot, root, helper, mixer, action, clip: result.clip, timeAlive: 0,
-          opts: { rotX: handle._rotX, rotY: handle._rotY, rotZ: handle._rotZ, speed: (handle._speed ?? 1.0), showSkeleton: (handle._showSkeleton ?? null), scale: (handle._scale ?? null), reverse: handle._reverse, color: handle._color, trail: handle._trail, delay: handle._delay }
+          opts: { rotX: handle._rotX, rotY: handle._rotY, rotZ: handle._rotZ, speed: (handle._speed ?? 1.0), showSkeleton: (handle._showSkeleton ?? null), scale: (handle._scale ?? null), reverse: handle._reverse, color: handle._color, color2: handle._color2, trail: handle._trail, delay: handle._delay }
         });
         mixers.push(mixer);
       }, undefined, (err) => { throw new Error("BVH load error (" + handle._url + "): " + (err?.message || err)); });
@@ -377,22 +317,17 @@ const SB = {
 
   duplicate(originalHandle) {
     if (!originalHandle || !originalHandle._rawFile) throw new Error("duplicate() necesita una variable.");
-
-    // 1. Buscamos la "locomotora" (el primer movimiento de la cadena original)
     const startOrig = originalHandle._chainHead || originalHandle;
 
-    // 2. Creamos la nueva locomotora
-    let newCurrent = this.bvh(startOrig._rawFile);
+    let newCurrent = this.bvh(startOrig._rawFile, true);
+    newCurrent._codeIndex = bvhCounter++; // ID propio para selección
+
     const keysToCopy = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_color2", "_trail", "_delay", "_dummy"];
-
     keysToCopy.forEach(k => newCurrent[k] = startOrig[k]);
-    const newHead = newCurrent; // Guardamos el inicio para devolverlo al final
+    const newHead = newCurrent;
 
-    // 3. Si era una cadena, recorremos todos los vagones copiándolos uno a uno
     if (startOrig._isChained) {
       let currentOrig = startOrig._nextHandle;
-
-      // Damos la vuelta al círculo hasta volver al inicio
       while (currentOrig && currentOrig !== startOrig) {
         newCurrent = newCurrent.nextBvh(currentOrig._rawFile);
         keysToCopy.forEach(k => newCurrent[k] = currentOrig[k]);
@@ -401,9 +336,6 @@ const SB = {
     }
 
     if (startOrig._isPlaying) newHead.play();
-
-    // 4. Devolvemos la nueva locomotora
-    // Así, al hacer duplicate(a).x(20), estás moviendo el punto de partida de toda la cadena
     return newHead;
   },
 
@@ -420,17 +352,25 @@ const SB = {
 
   _tick() {
     const dt = clock.getDelta(); frameCount++;
-    for (const r of rigs) {
-      if (r.group) {
-        const s = (r.opts.scale ?? SB.params.globalScale);
-        r.group.scale.setScalar(s);
+
+    // Actualizamos la caja de selección para que persiga al bailarín ACTIVO de la cadena
+    if (selectedRig && selectionBox.visible) {
+      const activeRig = rigs.find(r =>
+        (r.handle === selectedRig.handle || r.handle._chainHead === selectedRig.handle) &&
+        (r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible))
+      );
+      if (activeRig) {
+        selectionBox.setFromObject(activeRig.handle._dummy ? activeRig.group : activeRig.helper);
       }
+    }
+
+    for (const r of rigs) {
+      if (r.group) { r.group.scale.setScalar((r.opts.scale ?? SB.params.globalScale)); }
 
       const trailLen = r.opts.trail ?? SB.params.trail;
       const delayTime = r.opts.delay ?? SB.params.delay;
-
-      // Control de trails
       const isVisible = r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible);
+
       if (!SB.params.pause && trailLen > 0 && frameCount % 6 === 0 && isVisible && r.timeAlive >= delayTime) {
         const snapGeom = r.helper.geometry.clone(); snapGeom.applyMatrix4(r.helper.matrixWorld);
         const snapMat = r.helper.material.clone(); snapMat.transparent = true; snapMat.opacity = 0.6;
@@ -447,24 +387,16 @@ const SB = {
     if (!SB.params.pause) {
       for (let i = 0; i < mixers.length; i++) {
         const r = rigs[i]; const delayTime = r.opts?.delay ?? SB.params.delay;
-
-        // Comprobamos la visibilidad real (si tiene dummy, miramos el root; si no, el helper)
         const isVisible = r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible);
 
-        // Si está esperando su relevo (invisible de verdad), no envejece.
-        if (r.handle._isChained && r.handle !== r.handle._chainHead && !isVisible && r.timeAlive === 0) {
-          continue;
-        }
+        if (r.handle._isChained && r.handle !== r.handle._chainHead && !isVisible && r.timeAlive === 0) continue;
 
         const tiempoAnterior = r.timeAlive;
         r.timeAlive += dt;
-
         if (r.timeAlive < delayTime) continue;
 
         let tiempoActivo = dt;
-        if (tiempoAnterior < delayTime) {
-          tiempoActivo = r.timeAlive - delayTime;
-        }
+        if (tiempoAnterior < delayTime) tiempoActivo = r.timeAlive - delayTime;
 
         const localSpeed = r?.opts?.speed ?? 1.0; const isReversed = r.opts?.reverse ?? SB.params.reverse;
         mixers[i].timeScale = SB.params.speed * localSpeed * (isReversed ? -1 : 1);
@@ -481,7 +413,7 @@ window.cam = (x, y, z, lx, ly, lz) => SB.cam(x, y, z, lx, ly, lz); window.bvh = 
 window.speed = (v) => SB.speed(v); window.pause = (v = true) => SB.pause(v);
 window.skeleton = (v = true) => SB.skeleton(v); window.scale = (v) => SB.scale(v);
 window.rot = (v) => SB.rot(v); window.reverse = (v) => SB.reverse(v);
-window.color = (c1, c2) => SB.color(c1, c2);; window.trail = (l) => SB.trail(l);
+window.color = (c1, c2) => SB.color(c1, c2); window.trail = (l) => SB.trail(l);
 window.delay = (s) => SB.delay(s); window.duplicate = (h) => SB.duplicate(h);
 window.background = (c) => SB.background(c); window.bg = (c) => SB.bg(c);
 
@@ -493,14 +425,148 @@ function resize() {
 function animate() { resize(); controls.update(); SB._tick(); renderer.render(scene, camera); requestAnimationFrame(animate); }
 animate();
 
+// --- SISTEMA DE SELECCIÓN Y MOVIMIENTO INTERACTIVO ---
+raycaster.params.Line.threshold = 20;
+
+let editMode = 'position'; // Puede ser 'position' o 'rotation'
+
+window.addEventListener('pointerdown', (e) => {
+  if (e.target !== canvas) return;
+
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+
+  const objectsToTest = [];
+  rigs.forEach(r => {
+    if (r.handle._dummy) {
+      objectsToTest.push(r.group);
+    } else {
+      if (r.helper && r.helper.visible) {
+        r.helper.geometry.computeBoundingSphere();
+        r.helper.geometry.computeBoundingBox();
+        objectsToTest.push(r.helper);
+      }
+    }
+  });
+
+  const intersects = raycaster.intersectObjects(objectsToTest, true);
+
+  if (intersects.length > 0) {
+    let hitObject = intersects[0].object;
+
+    let hitRig = rigs.find(r => {
+      let found = false;
+      if (r.helper === hitObject) found = true;
+      r.group.traverse(child => { if (child === hitObject) found = true; });
+      return found;
+    });
+
+    if (hitRig) {
+      const newlySelectedRig = hitRig.handle._chainHead ? rigs.find(r => r.handle === hitRig.handle._chainHead) : hitRig;
+
+      if (selectedRig === newlySelectedRig) {
+        editMode = (editMode === 'position') ? 'rotation' : 'position';
+      } else {
+        selectedRig = newlySelectedRig;
+        editMode = 'position';
+      }
+
+      selectionBox.material.color.setHex(editMode === 'position' ? 0xffff00 : 0x00ffff);
+
+      const activeRig = rigs.find(r => (r.handle === selectedRig.handle || r.handle._chainHead === selectedRig.handle) && (r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible)));
+      if (activeRig) selectionBox.setFromObject(activeRig.handle._dummy ? activeRig.group : activeRig.helper);
+
+      selectionBox.visible = true;
+      controls.enabled = false;
+
+      // --- NUEVO: AVISAMOS AL EDITOR DE QUÉ LÍNEA HEMOS SELECCIONADO ---
+      window.parent.postMessage({ type: 'rigSelected', codeIndex: selectedRig.handle._codeIndex }, '*');
+
+    }
+  } else {
+    selectedRig = null;
+    selectionBox.visible = false;
+
+    // --- NUEVO: AVISAMOS AL EDITOR DE QUE HEMOS DESELECCIONADO ---
+    window.parent.postMessage({ type: 'rigDeselected' }, '*');
+  }
+});
+
+window.addEventListener('pointerup', () => { controls.enabled = true; });
+
+// Movimiento y Rotación con flechas
+window.addEventListener('keydown', (e) => {
+  if (!selectedRig) return;
+
+  // ¡MAGIA! Recopilamos todos los eslabones de la coreografía seleccionada
+  const cadenaRigs = rigs.filter(r => r.handle === selectedRig.handle || r.handle._chainHead === selectedRig.handle);
+
+  if (editMode === 'position') {
+    const step = e.shiftKey ? 20 : 5;
+    let moved = false;
+    let dx = 0, dz = 0;
+
+    if (e.key === 'ArrowUp') { dz -= step; moved = true; }
+    if (e.key === 'ArrowDown') { dz += step; moved = true; }
+    if (e.key === 'ArrowLeft') { dx -= step; moved = true; }
+    if (e.key === 'ArrowRight') { dx += step; moved = true; }
+
+    if (moved) {
+      // Aplicamos el movimiento a TODOS los bailarines de la cadena a la vez
+      cadenaRigs.forEach(r => {
+        r.group.position.x += dx;
+        r.group.position.z += dz;
+        r.handle._x = r.group.position.x;
+        r.handle._z = r.group.position.z;
+      });
+
+      window.parent.postMessage({
+        type: 'rigMoved',
+        codeIndex: selectedRig.handle._codeIndex,
+        x: selectedRig.group.position.x,
+        z: selectedRig.group.position.z
+      }, '*');
+    }
+  }
+  else if (editMode === 'rotation') {
+    const angleStep = e.shiftKey ? 0.5 : 0.1;
+    let rotated = false;
+    let dRotX = 0, dRotY = 0;
+
+    if (e.key === 'ArrowLeft') { dRotY += angleStep; rotated = true; }
+    if (e.key === 'ArrowRight') { dRotY -= angleStep; rotated = true; }
+    if (e.key === 'ArrowUp') { dRotX -= angleStep; rotated = true; }
+    if (e.key === 'ArrowDown') { dRotX += angleStep; rotated = true; }
+
+    if (rotated) {
+      // Aplicamos la rotación a TODOS los bailarines de la cadena a la vez
+      cadenaRigs.forEach(r => {
+        r.pivot.rotation.x += dRotX;
+        r.pivot.rotation.y += dRotY;
+        r.handle._rotX = r.pivot.rotation.x;
+        r.handle._rotY = r.pivot.rotation.y;
+      });
+
+      window.parent.postMessage({
+        type: 'rigRotated',
+        codeIndex: selectedRig.handle._codeIndex,
+        rotX: selectedRig.pivot.rotation.x,
+        rotY: selectedRig.pivot.rotation.y
+      }, '*');
+    }
+  }
+});
+
 window.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'execute') {
-    try {
-      const ejecutar = new Function(event.data.code);
-      ejecutar();
-    } catch (error) {
-      window.parent.postMessage({ type: 'error', message: error.stack || error.message }, '*');
-    }
+    try { const ejecutar = new Function(event.data.code); ejecutar(); }
+    catch (error) { window.parent.postMessage({ type: 'error', message: error.stack || error.message }, '*'); }
+  } else if (event.data && event.data.type === 'remoteKey') {
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: event.data.key,
+      shiftKey: event.data.shiftKey
+    }));
   }
 });
 

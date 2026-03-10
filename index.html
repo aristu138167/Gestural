@@ -21,7 +21,6 @@
       position: relative;
     }
 
-    /* Fondo: preview full-screen */
     #preview {
       position: fixed;
       inset: 0;
@@ -32,7 +31,6 @@
       z-index: 0;
     }
 
-    /* Panel editor encima (estilo Hydra) */
     #overlay {
       position: fixed;
       top: 16px;
@@ -42,12 +40,9 @@
       display: flex;
       flex-direction: column;
       z-index: 10;
-
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 10px;
       overflow: hidden;
-
-      /* TRANSLUCIDO */
       background: rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(1px);
       -webkit-backdrop-filter: blur(1px);
@@ -80,12 +75,6 @@
     #randomBtn:hover,
     #globalPauseBtn:hover {
       background: rgba(255, 255, 255, 0.10);
-    }
-
-    #hint {
-      color: rgba(255, 255, 255, 0.70);
-      font: 12px/1.2 system-ui, sans-serif;
-      margin-left: auto;
     }
 
     #code {
@@ -156,7 +145,6 @@
       z-index: 9999;
     }
 
-    /* --- NUEVO CSS: BANDEJA DE RECOMENDACIONES --- */
     #bvh-drawer {
       position: fixed;
       bottom: 0;
@@ -167,7 +155,6 @@
       color: white;
       z-index: 1000;
       transform: translateY(100%);
-      /* El cajón está oculto por debajo */
       transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
       font-family: sans-serif;
       border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -178,11 +165,9 @@
       transform: translateY(0);
     }
 
-    /* LA NUEVA PESTAÑA / BOTÓN */
     #drawer-toggle {
       position: absolute;
       top: -30px;
-      /* Hace que asome 30px por encima del cajón oculto */
       left: 50%;
       transform: translateX(-50%);
       width: 60px;
@@ -191,7 +176,6 @@
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-bottom: none;
-      /* Para que se fusione visualmente con el cajón */
       border-radius: 10px 10px 0 0;
       display: flex;
       align-items: center;
@@ -236,28 +220,9 @@
       transition: all 0.2s;
       border: 2px solid transparent;
       user-select: none;
-    }
-
-    .bvh-item {
-      flex: 0 0 auto;
-      width: 160px;
-      height: 90px;
-      background: #222;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s;
-      border: 2px solid transparent;
-      user-select: none;
-
-      /* --- NUEVO: Evita que el texto toque los bordes --- */
       padding: 10px;
       box-sizing: border-box;
-      /* Hace que el padding no engorde la caja */
       text-align: center;
-      /* Centra el texto */
     }
 
     .bvh-item:hover {
@@ -268,23 +233,15 @@
 
     .bvh-item span {
       font-size: 14px;
-      /* Un pelín más pequeño para que quepa mejor */
       font-weight: bold;
       pointer-events: none;
-
-      /* --- NUEVO: Magia para nombres hiperlargos --- */
       width: 100%;
       overflow-wrap: break-word;
-      /* Rompe la palabra si es más ancha que la caja */
       display: -webkit-box;
       -webkit-line-clamp: 3;
-      /* Máximo de 3 líneas */
       -webkit-box-orient: vertical;
       overflow: hidden;
-      /* Oculta lo que sobra y pone "..." */
     }
-
-    /* ------------------------------------------- */
   </style>
 </head>
 
@@ -298,26 +255,18 @@
         <button id="run">Run (Ctrl+Enter)</button>
         <button id="toggle">Hide</button>
         <button id="globalPauseBtn" style="cursor:pointer;">Pause</button>
-        <button id="randomBtn" style="cursor:pointer; margin-right:5px; display: none;">
-          <i class="fas fa-random"></i> Random
-        </button>
+        <button id="randomBtn" style="cursor:pointer; margin-right:5px; display: none;"><i class="fas fa-random"></i>
+          Random</button>
       </div>
       <textarea id="code" spellcheck="false"></textarea>
       <div id="resizeHandle"></div>
     </div>
   </div>
 
-  <div id="trigger-zona-inferior"></div>
   <div id="bvh-drawer">
-    <div id="drawer-toggle">
-      <i class="fas fa-chevron-up"></i>
-    </div>
-
-    <div class="drawer-header">
-      <span>Animaciones Disponibles</span>
-    </div>
-    <div class="drawer-carousel" id="bvh-list">
-    </div>
+    <div id="drawer-toggle"><i class="fas fa-chevron-up"></i></div>
+    <div class="drawer-header"><span>Animaciones Disponibles</span></div>
+    <div class="drawer-carousel" id="bvh-list"></div>
   </div>
 
   <script type="module" src="./main.js"></script>
@@ -334,112 +283,73 @@
       let animacionesDisponibles = [];
 
       try {
-        // 1. EL TRUCO: Pedimos al servidor local que nos lea la carpeta
         const response = await fetch('./assets/');
         const html = await response.text();
-
-        // 2. Convertimos la respuesta en un documento que podamos buscar
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         const enlaces = Array.from(doc.querySelectorAll('a'));
 
-        // 3. Filtramos solo los archivos .bvh y limpiamos el nombre a lo bestia
         animacionesDisponibles = enlaces
-          .map(a => a.getAttribute('href') || a.textContent) // Pillamos el enlace
-          .filter(texto => texto.includes('.bvh'))           // Nos quedamos solo con los .bvh
-          .map(ruta => {
-            // Coge "cualquier/ruta/rara/assets/pirouette.bvh", lo corta por las "/" 
-            // y se queda solo con "pirouette.bvh". Luego le quita la extensión.
-            return ruta.split('/').pop().replace('.bvh', '');
-          });
-
+          .map(a => a.getAttribute('href') || a.textContent)
+          .filter(texto => texto.includes('.bvh'))
+          .map(ruta => ruta.split('/').pop().replace('.bvh', ''));
       } catch (error) {
-        console.warn("Tu servidor no permite listar carpetas. Usando array de seguridad.", error);
-        animacionesDisponibles = ["pirouette"]; // Fallback por si falla
+        console.warn("Usando array de seguridad.", error);
+        animacionesDisponibles = ["pirouette"];
       }
 
-      // Si la carpeta está vacía, avisamos
       if (animacionesDisponibles.length === 0) {
         bvhList.innerHTML = `<span style="padding: 20px; color: #ff5555;">No se encontraron archivos .bvh en /assets/</span>`;
         return;
       }
 
-      // 4. Generar el carrusel dinámicamente con los archivos encontrados
       animacionesDisponibles.forEach(nombre => {
         const btn = document.createElement('div');
         btn.className = 'bvh-item';
         btn.innerHTML = `<span>${nombre}</span>`;
 
         btn.addEventListener('click', () => {
-          // 1. Leemos el código que haya escrito en el editor
+          // --- LÓGICA DE BANDEJA INTELIGENTE ---
           let codigoActual = textareaCode.value;
-
-          // 2. Preparamos la nueva línea
           let nuevaLinea = `temp = bvh("${nombre}").color("#ffffff").play();`;
-
-          // 3. El buscador inteligente (Regex)
           let regex = /^temp\s*=\s*bvh\(.*$/m;
 
-          // 4. Lógica de sustitución o añadido
           if (regex.test(codigoActual)) {
-            // Si ya hay un "temp", lo cambiamos por el nuevo
             codigoActual = codigoActual.replace(regex, nuevaLinea);
           } else {
-            // Si no hay un "temp", lo añadimos al final del documento
-            if (codigoActual.trim() !== "") {
-              codigoActual += "\n"; // Salto de línea por limpieza
-            }
+            if (codigoActual.trim() !== "") codigoActual += "\n";
             codigoActual += nuevaLinea;
           }
 
-          // 5. Devolvemos el texto actualizado a la caja visualmente
           textareaCode.value = codigoActual;
 
-          // 6. ¡Lo mandamos a ejecutar!
           if (iframePreview.contentWindow) {
             iframePreview.contentWindow.postMessage({ type: 'execute', code: codigoActual }, '*');
           }
-
-          // (Opcional) CERRAR BANDEJA AL SELECCIONAR 
-          // drawer.classList.remove('abierto');
-          // toggleIcon.classList.remove('fa-chevron-down');
-          // toggleIcon.classList.add('fa-chevron-up');
         });
 
         bvhList.appendChild(btn);
       });
 
-      // 5. Comportamiento de la pestaña
       toggleBtn.addEventListener('click', () => {
         drawer.classList.toggle('abierto');
         if (drawer.classList.contains('abierto')) {
-          toggleIcon.classList.remove('fa-chevron-up');
-          toggleIcon.classList.add('fa-chevron-down');
+          toggleIcon.className = 'fas fa-chevron-down';
         } else {
-          toggleIcon.classList.remove('fa-chevron-down');
-          toggleIcon.classList.add('fa-chevron-up');
+          toggleIcon.className = 'fas fa-chevron-up';
         }
       });
+
       const globalPauseBtn = document.getElementById('globalPauseBtn');
       let isGlobalPaused = false;
-
       globalPauseBtn.addEventListener('click', () => {
         isGlobalPaused = !isGlobalPaused;
-
         if (isGlobalPaused) {
-          // Cambiamos el icono a Play visualmente
           globalPauseBtn.innerHTML = 'Play';
-          // Mandamos la orden al motor 3D
-          if (iframePreview.contentWindow) {
-            iframePreview.contentWindow.postMessage({ type: 'execute', code: 'pause(true);' }, '*');
-          }
+          if (iframePreview.contentWindow) iframePreview.contentWindow.postMessage({ type: 'execute', code: 'pause(true);' }, '*');
         } else {
-          // Cambiamos el icono a Pause visualmente
           globalPauseBtn.innerHTML = 'Pause';
-          // Descongelamos el motor
-          if (iframePreview.contentWindow) {
-            iframePreview.contentWindow.postMessage({ type: 'execute', code: 'pause(false);' }, '*');
-          }
+          if (iframePreview.contentWindow) iframePreview.contentWindow.postMessage({ type: 'execute', code: 'pause(false);' }, '*');
         }
       });
     });
