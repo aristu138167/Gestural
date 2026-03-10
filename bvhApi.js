@@ -92,7 +92,7 @@ const SB = {
     const handle = {
       _rawFile: fileOrUrl, _url: url, _x: 0, _y: 0, _z: 0, _rotX: 0, _rotY: 0, _rotZ: 0,
       _scale: null, _showSkeleton: null, _speed: null, _reverse: null,
-      _color: null, _color2: null, _trail: null, _delay: null, _dummy: null,
+      _color: null, _color2: null, _trail: null, _delay: null, _dummy: null, _dummyJoint: null, _boneRatio: 1.0,
       _codeIndex: (!isChained ? bvhCounter++ : null),
 
       _isPlaying: false, _isChained: false, _isHead: true, _chainHead: null, _nextHandle: null,
@@ -103,8 +103,12 @@ const SB = {
       scale(s) { this._scale = s; return this; }, skeleton(v) { this._showSkeleton = v; return this; },
       speed(v) { this._speed = v; return this; }, reverse(v = true) { this._reverse = v; return this; },
       color(c1, c2) { this._color = c1; this._color2 = c2; return this; }, trail(length) { this._trail = length; return this; },
-      delay(s) { this._delay = s; return this; }, dummy(num) { this._dummy = num; return this; },
-
+      delay(s) { this._delay = s; return this; }, bones(ratio) { this._boneRatio = ratio; return this; },
+      dummy(boneSize, jointSize) {
+        this._dummy = boneSize;
+        this._dummyJoint = (jointSize !== undefined ? jointSize : boneSize);
+        return this;
+      },
       play() {
         this._isPlaying = true;
         const rig = rigs.find(r => r.handle === this);
@@ -124,6 +128,8 @@ const SB = {
         nextHandle._trail = this._trail;
         nextHandle._showSkeleton = this._showSkeleton;
         nextHandle._dummy = this._dummy;
+        nextHandle._dummyJoint = this._dummyJoint;
+        nextHandle._boneRatio = this._boneRatio; // Herencia del fantasma
         nextHandle._rotX = this._rotX;
         nextHandle._rotY = this._rotY;
         nextHandle._rotZ = this._rotZ;
@@ -195,8 +201,15 @@ const SB = {
         scene.add(helper);
 
         // --- CREACIÓN DEL DUMMY ---
-        if (handle._dummy !== null && handle._dummy > 0) {
-          helper.visible = false;
+        if (handle._dummy !== null && (handle._dummy > 0 || handle._dummyJoint > 0)) {
+
+          // Si el hueso es mayor que 0, ocultamos las líneas de luz base
+          if (handle._dummy > 0) {
+            helper.visible = false;
+          } else {
+            // Si el hueso es 0 (solo articulaciones), respetamos la visibilidad del esqueleto
+            helper.visible = (handle._showSkeleton ?? SB.params.showSkeleton);
+          }
 
           const dummyMat = new THREE.MeshStandardMaterial({
             color: useGradient ? 0xffffff : colorInicio,
@@ -226,7 +239,9 @@ const SB = {
 
           root.traverse((bone) => {
             if (bone.isBone) {
-              let hasChildren = false; let maxChildLength = 0;
+              let hasChildren = false;
+              let maxChildLength = 0;
+
               if (bone.children.length > 0) {
                 bone.children.forEach((child) => {
                   if (child.isBone) {
@@ -234,10 +249,15 @@ const SB = {
                     const length = child.position.length();
                     maxChildLength = Math.max(maxChildLength, length);
 
-                    if (length > 0.01) {
+                    // 1. DIBUJAMOS EL HUESO (Cilindro fantasma)
+                    if (handle._dummy > 0 && length > 0.01) {
                       const boneThickness = Math.min(handle._dummy, length * 0.25);
                       const mesh = new THREE.Mesh(baseCylGeom, dummyMat);
-                      mesh.scale.set(boneThickness, length, boneThickness);
+
+                      // Magia fantasma: Multiplicamos por _boneRatio (1.0 por defecto)
+                      const longitudVisible = length * (handle._boneRatio ?? 1.0);
+
+                      mesh.scale.set(boneThickness, longitudVisible, boneThickness);
                       mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), child.position.clone().normalize());
                       bone.add(mesh);
                     }
@@ -245,20 +265,21 @@ const SB = {
                 });
               }
 
-              let jointSize = 0;
-              if (hasChildren) {
-                const boneThickness = Math.min(handle._dummy, maxChildLength * 0.25);
-                jointSize = boneThickness * 1.2;
-              } else {
-                const length = bone.position.length();
-                const boneThickness = Math.min(handle._dummy, length * 0.25);
-                jointSize = boneThickness * 0.45;
-              }
+              // 2. DIBUJAMOS LA ARTICULACIÓN (Solo si el segundo número es mayor que 0)
+              if (handle._dummyJoint > 0) {
+                let jointSize = 0;
+                if (hasChildren) {
+                  jointSize = Math.min(handle._dummyJoint, maxChildLength * 0.35);
+                } else {
+                  const length = bone.position.length();
+                  jointSize = Math.min(handle._dummyJoint, length * 0.2);
+                }
 
-              if (jointSize > 0) {
-                const jointMesh = new THREE.Mesh(baseSphereGeom, dummyMat);
-                jointMesh.scale.setScalar(jointSize);
-                bone.add(jointMesh);
+                if (jointSize > 0) {
+                  const jointMesh = new THREE.Mesh(baseSphereGeom, dummyMat);
+                  jointMesh.scale.setScalar(jointSize);
+                  bone.add(jointMesh);
+                }
               }
             }
           });
@@ -322,7 +343,7 @@ const SB = {
     let newCurrent = this.bvh(startOrig._rawFile, true);
     newCurrent._codeIndex = bvhCounter++; // ID propio para selección
 
-    const keysToCopy = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_color2", "_trail", "_delay", "_dummy"];
+    const keysToCopy = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_color2", "_trail", "_delay", "_dummy", "_dummyJoint", "_boneRatio"];
     keysToCopy.forEach(k => newCurrent[k] = startOrig[k]);
     const newHead = newCurrent;
 
@@ -480,7 +501,7 @@ window.addEventListener('pointerdown', (e) => {
       selectionBox.visible = true;
       controls.enabled = false;
 
-      // --- NUEVO: AVISAMOS AL EDITOR DE QUÉ LÍNEA HEMOS SELECCIONADO ---
+      // --- AVISAMOS AL EDITOR DE QUÉ LÍNEA HEMOS SELECCIONADO ---
       window.parent.postMessage({ type: 'rigSelected', codeIndex: selectedRig.handle._codeIndex }, '*');
 
     }
@@ -488,7 +509,7 @@ window.addEventListener('pointerdown', (e) => {
     selectedRig = null;
     selectionBox.visible = false;
 
-    // --- NUEVO: AVISAMOS AL EDITOR DE QUE HEMOS DESELECCIONADO ---
+    // --- AVISAMOS AL EDITOR DE QUE HEMOS DESELECCIONADO ---
     window.parent.postMessage({ type: 'rigDeselected' }, '*');
   }
 });
