@@ -105,10 +105,9 @@ window.addEventListener('message', (e) => {
       }
       charCount += lines[i].length + 1;
     }
-
     // 3. EL USUARIO HA HECHO CLIC EN UN PERSONAJE
   } else if (e.data.type === 'rigSelected') {
-    isRigSelected = true; // Avisamos de que hay selección
+    isRigSelected = true;
     const targetIndex = e.data.codeIndex;
     let code = codeEl.value;
     let lines = code.split('\n');
@@ -119,17 +118,31 @@ window.addEventListener('message', (e) => {
       if (/\b(?:bvh|duplicate)\s*\(/.test(lines[i])) {
         if (currentSpawnIndex === targetIndex) {
 
-          // Magia: Forzamos el foco en el editor para que el navegador pinte el azul
+          let startPos = charCount;
+          let endPos = charCount + lines[i].length;
+
+          // --- MAGIA MULTILÍNEA ---
+          // Si la línea no tiene punto y coma, atrapamos las siguientes líneas
+          let j = i;
+          while (j < lines.length && !lines[j].includes(';')) {
+            j++;
+            if (j < lines.length) {
+              // Si de repente empieza OTRO personaje (por si se te olvidó el ;), paramos
+              if (/\b(?:bvh|duplicate)\s*\(/.test(lines[j])) break;
+
+              endPos += 1 + lines[j].length; // +1 por el salto de línea (\n)
+            }
+          }
+
+          // Seleccionamos todo el bloque entero
           codeEl.focus();
-          codeEl.setSelectionRange(charCount, charCount + lines[i].length);
+          codeEl.setSelectionRange(startPos, endPos);
           break;
         }
         currentSpawnIndex++;
       }
       charCount += lines[i].length + 1;
     }
-
-    // 4. EL USUARIO HA HECHO CLIC EN EL VACÍO
   } else if (e.data.type === 'rigDeselected') {
     isRigSelected = false; // Apagamos la selección
     codeEl.setSelectionRange(codeEl.selectionEnd, codeEl.selectionEnd);

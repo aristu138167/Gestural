@@ -59,6 +59,8 @@ const SB = {
     selectedRig = null;
     selectionBox.visible = false;
 
+    this.params = { speed: 1.0, pause: false, showSkeleton: true, globalScale: 1.0, rotSpeed: 0.0, reverse: false, color: null, color2: null, trail: 0, delay: 0 };
+
     for (const r of rigs) {
       if (r.mixer) r.mixer.stopAllAction();
       if (r.helper) scene.remove(r.helper);
@@ -97,18 +99,46 @@ const SB = {
 
       _isPlaying: false, _isChained: false, _isHead: true, _chainHead: null, _nextHandle: null,
 
+      _propagate(props) {
+        Object.assign(this, props);
+        if (this._isChained && this._isHead) {
+          let curr = this._nextHandle;
+          while (curr && curr !== this) {
+            Object.assign(curr, props);
+            curr = curr._nextHandle;
+          }
+        }
+        return this;
+      },
+
       x(v) { this._x = v; return this; }, y(v) { this._y = v; return this; }, z(v) { this._z = v; return this; },
       pos(x, y, z) { this._x = x; this._y = y; this._z = z; return this; },
       rotX(r) { this._rotX = r; return this; }, rotY(r) { this._rotY = r; return this; }, rotZ(r) { this._rotZ = r; return this; },
-      scale(s) { this._scale = s; return this; }, skeleton(v) { this._showSkeleton = v; return this; },
-      speed(v) { this._speed = v; return this; }, reverse(v = true) { this._reverse = v; return this; },
-      color(c1, c2) { this._color = c1; this._color2 = c2; return this; }, trail(length) { this._trail = length; return this; },
-      delay(s) { this._delay = s; return this; }, bones(ratio) { this._boneRatio = ratio; return this; },
-      dummy(boneSize, jointSize) {
-        this._dummy = boneSize;
-        this._dummyJoint = (jointSize !== undefined ? jointSize : boneSize);
-        return this;
+      delay(s) { this._delay = s; return this; },
+
+      scale(s) { return this._propagate({ _scale: s }); },
+      skeleton(v) { return this._propagate({ _showSkeleton: v }); },
+      speed(v) { return this._propagate({ _speed: v }); },
+      reverse(v = true) { return this._propagate({ _reverse: v }); },
+      color(c1, c2) { return this._propagate({ _color: c1, _color2: c2 }); },
+      trail(length) { return this._propagate({ _trail: length }); },
+
+      bones(ratio) {
+        let props = { _boneRatio: ratio };
+        if (this._dummy === null) {
+          props._dummy = 1;
+          props._dummyJoint = 1;
+        }
+        return this._propagate(props);
       },
+
+      dummy(boneSize, jointSize) {
+        return this._propagate({
+          _dummy: boneSize,
+          _dummyJoint: (jointSize !== undefined ? jointSize : boneSize)
+        });
+      },
+
       play() {
         this._isPlaying = true;
         const rig = rigs.find(r => r.handle === this);
@@ -129,7 +159,7 @@ const SB = {
         nextHandle._showSkeleton = this._showSkeleton;
         nextHandle._dummy = this._dummy;
         nextHandle._dummyJoint = this._dummyJoint;
-        nextHandle._boneRatio = this._boneRatio; // Herencia del fantasma
+        nextHandle._boneRatio = this._boneRatio;
         nextHandle._rotX = this._rotX;
         nextHandle._rotY = this._rotY;
         nextHandle._rotZ = this._rotZ;
@@ -201,15 +231,10 @@ const SB = {
         scene.add(helper);
 
         // --- CREACIÓN DEL DUMMY ---
-        if (handle._dummy !== null && (handle._dummy > 0 || handle._dummyJoint > 0)) {
+        if (handle._dummy !== null && (handle._dummy >= 0 || handle._dummyJoint >= 0)) {
 
-          // Si el hueso es mayor que 0, ocultamos las líneas de luz base
-          if (handle._dummy > 0) {
-            helper.visible = false;
-          } else {
-            // Si el hueso es 0 (solo articulaciones), respetamos la visibilidad del esqueleto
-            helper.visible = (handle._showSkeleton ?? SB.params.showSkeleton);
-          }
+          // El esqueleto de líneas se oculta a menos que hayas forzado explícitamente .skeleton(true) en esa línea.
+          helper.visible = (handle._showSkeleton ?? false);
 
           const dummyMat = new THREE.MeshStandardMaterial({
             color: useGradient ? 0xffffff : colorInicio,
@@ -218,7 +243,7 @@ const SB = {
           });
 
           const baseSphereGeom = new THREE.SphereGeometry(1, 12, 12);
-          const baseCylGeom = new THREE.CylinderGeometry(0.4, 1, 1, 8);
+          const baseCylGeom = new THREE.CylinderGeometry(1, 1, 1, 8);
           baseCylGeom.translate(0, 0.5, 0);
 
           if (useGradient) {
@@ -249,14 +274,12 @@ const SB = {
                     const length = child.position.length();
                     maxChildLength = Math.max(maxChildLength, length);
 
-                    // 1. DIBUJAMOS EL HUESO (Cilindro fantasma)
+                    // 1. DIBUJAMOS EL HUESO (Solo si el grosor es mayor que 0)
                     if (handle._dummy > 0 && length > 0.01) {
-                      const boneThickness = Math.min(handle._dummy, length * 0.25);
                       const mesh = new THREE.Mesh(baseCylGeom, dummyMat);
-
-                      // Magia fantasma: Multiplicamos por _boneRatio (1.0 por defecto)
                       const longitudVisible = length * (handle._boneRatio ?? 1.0);
 
+                      const boneThickness = Math.min(handle._dummy, length * 0.25);
                       mesh.scale.set(boneThickness, longitudVisible, boneThickness);
                       mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), child.position.clone().normalize());
                       bone.add(mesh);
@@ -265,9 +288,10 @@ const SB = {
                 });
               }
 
-              // 2. DIBUJAMOS LA ARTICULACIÓN (Solo si el segundo número es mayor que 0)
+              // 2. DIBUJAMOS LA ARTICULACIÓN (Solo si el tamaño es mayor que 0)
               if (handle._dummyJoint > 0) {
                 let jointSize = 0;
+
                 if (hasChildren) {
                   jointSize = Math.min(handle._dummyJoint, maxChildLength * 0.35);
                 } else {
@@ -300,7 +324,8 @@ const SB = {
         mixer.addEventListener('finished', (e) => {
           if (handle._isChained && handle._nextHandle) {
             helper.visible = false;
-            if (handle._dummy) root.visible = false;
+            // FIX DEL CERO: Preguntamos si es distinto de null
+            if (handle._dummy !== null) root.visible = false;
 
             const ejecutarRelevo = (nextRig) => {
               const currentPos = new THREE.Vector3(); root.getWorldPosition(currentPos);
@@ -309,7 +334,8 @@ const SB = {
               nextRig.group.position.x += (currentPos.x - nextRootStartPos.x);
               nextRig.group.position.z += (currentPos.z - nextRootStartPos.z);
 
-              if (handle._nextHandle._dummy) { nextRig.root.visible = true; }
+              // FIX DEL CERO
+              if (handle._nextHandle._dummy !== null) { nextRig.root.visible = true; }
               else { nextRig.helper.visible = (handle._nextHandle._showSkeleton ?? SB.params.showSkeleton); }
               nextRig.timeAlive = 0; nextRig.action.play();
             };
@@ -341,7 +367,7 @@ const SB = {
     const startOrig = originalHandle._chainHead || originalHandle;
 
     let newCurrent = this.bvh(startOrig._rawFile, true);
-    newCurrent._codeIndex = bvhCounter++; // ID propio para selección
+    newCurrent._codeIndex = bvhCounter++;
 
     const keysToCopy = ["_x", "_y", "_z", "_scale", "_rotX", "_rotY", "_rotZ", "_showSkeleton", "_speed", "_reverse", "_color", "_color2", "_trail", "_delay", "_dummy", "_dummyJoint", "_boneRatio"];
     keysToCopy.forEach(k => newCurrent[k] = startOrig[k]);
@@ -374,14 +400,13 @@ const SB = {
   _tick() {
     const dt = clock.getDelta(); frameCount++;
 
-    // Actualizamos la caja de selección para que persiga al bailarín ACTIVO de la cadena
     if (selectedRig && selectionBox.visible) {
       const activeRig = rigs.find(r =>
         (r.handle === selectedRig.handle || r.handle._chainHead === selectedRig.handle) &&
-        (r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible))
+        (r.handle._dummy !== null ? r.root.visible : (r.helper && r.helper.visible)) // FIX DEL CERO
       );
       if (activeRig) {
-        selectionBox.setFromObject(activeRig.handle._dummy ? activeRig.group : activeRig.helper);
+        selectionBox.setFromObject(activeRig.handle._dummy !== null ? activeRig.group : activeRig.helper); // FIX DEL CERO
       }
     }
 
@@ -390,7 +415,7 @@ const SB = {
 
       const trailLen = r.opts.trail ?? SB.params.trail;
       const delayTime = r.opts.delay ?? SB.params.delay;
-      const isVisible = r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible);
+      const isVisible = r.handle._dummy !== null ? r.root.visible : (r.helper && r.helper.visible); // FIX DEL CERO
 
       if (!SB.params.pause && trailLen > 0 && frameCount % 6 === 0 && isVisible && r.timeAlive >= delayTime) {
         const snapGeom = r.helper.geometry.clone(); snapGeom.applyMatrix4(r.helper.matrixWorld);
@@ -408,7 +433,7 @@ const SB = {
     if (!SB.params.pause) {
       for (let i = 0; i < mixers.length; i++) {
         const r = rigs[i]; const delayTime = r.opts?.delay ?? SB.params.delay;
-        const isVisible = r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible);
+        const isVisible = r.handle._dummy !== null ? r.root.visible : (r.helper && r.helper.visible); // FIX DEL CERO
 
         if (r.handle._isChained && r.handle !== r.handle._chainHead && !isVisible && r.timeAlive === 0) continue;
 
@@ -449,7 +474,7 @@ animate();
 // --- SISTEMA DE SELECCIÓN Y MOVIMIENTO INTERACTIVO ---
 raycaster.params.Line.threshold = 20;
 
-let editMode = 'position'; // Puede ser 'position' o 'rotation'
+let editMode = 'position';
 
 window.addEventListener('pointerdown', (e) => {
   if (e.target !== canvas) return;
@@ -460,7 +485,7 @@ window.addEventListener('pointerdown', (e) => {
 
   const objectsToTest = [];
   rigs.forEach(r => {
-    if (r.handle._dummy) {
+    if (r.handle._dummy !== null) {
       objectsToTest.push(r.group);
     } else {
       if (r.helper && r.helper.visible) {
@@ -495,21 +520,17 @@ window.addEventListener('pointerdown', (e) => {
 
       selectionBox.material.color.setHex(editMode === 'position' ? 0xffff00 : 0x00ffff);
 
-      const activeRig = rigs.find(r => (r.handle === selectedRig.handle || r.handle._chainHead === selectedRig.handle) && (r.handle._dummy ? r.root.visible : (r.helper && r.helper.visible)));
-      if (activeRig) selectionBox.setFromObject(activeRig.handle._dummy ? activeRig.group : activeRig.helper);
+      const activeRig = rigs.find(r => (r.handle === selectedRig.handle || r.handle._chainHead === selectedRig.handle) && (r.handle._dummy !== null ? r.root.visible : (r.helper && r.helper.visible))); // FIX DEL CERO
+      if (activeRig) selectionBox.setFromObject(activeRig.handle._dummy !== null ? activeRig.group : activeRig.helper);
 
       selectionBox.visible = true;
       controls.enabled = false;
 
-      // --- AVISAMOS AL EDITOR DE QUÉ LÍNEA HEMOS SELECCIONADO ---
       window.parent.postMessage({ type: 'rigSelected', codeIndex: selectedRig.handle._codeIndex }, '*');
-
     }
   } else {
     selectedRig = null;
     selectionBox.visible = false;
-
-    // --- AVISAMOS AL EDITOR DE QUE HEMOS DESELECCIONADO ---
     window.parent.postMessage({ type: 'rigDeselected' }, '*');
   }
 });
@@ -520,7 +541,6 @@ window.addEventListener('pointerup', () => { controls.enabled = true; });
 window.addEventListener('keydown', (e) => {
   if (!selectedRig) return;
 
-  // ¡MAGIA! Recopilamos todos los eslabones de la coreografía seleccionada
   const cadenaRigs = rigs.filter(r => r.handle === selectedRig.handle || r.handle._chainHead === selectedRig.handle);
 
   if (editMode === 'position') {
@@ -534,7 +554,6 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight') { dx += step; moved = true; }
 
     if (moved) {
-      // Aplicamos el movimiento a TODOS los bailarines de la cadena a la vez
       cadenaRigs.forEach(r => {
         r.group.position.x += dx;
         r.group.position.z += dz;
@@ -561,7 +580,6 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { dRotX += angleStep; rotated = true; }
 
     if (rotated) {
-      // Aplicamos la rotación a TODOS los bailarines de la cadena a la vez
       cadenaRigs.forEach(r => {
         r.pivot.rotation.x += dRotX;
         r.pivot.rotation.y += dRotY;

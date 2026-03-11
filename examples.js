@@ -3,17 +3,35 @@ export const examples = [
     name: "Animación Base (Default)",
     code: `clear();
 grid(800, 20);
-cam(0, 200, 450, 0, 120, 0);
+cam(0, 200, 650, 0, 120, 0);
+bg("#0a0a0a");
 
-// Carga de archivos .bvh desde la carpeta assets
-bvh("pirouette").play();
-bvh("rehabilitation_exercise").x(-100).z(-160).play();
-bvh("warming1").x(100).z(-160).play();
+// 1. Con estela, doble color 
+// y encadenamiento de bailes (nextBvh)
+let main = bvh("pirouette").pos(0, 0, 200)
+.color("#00ffcc", "#0055ff").trail(15).play();
+main.nextBvh("warming1").nextBvh("warming2");
 
-// Modificadores globales (afectan a todos los bailarines)
-speed(1);
-skeleton(true);
-scale(1.0);`
+// 2. Copiar al protagonista, pero le cambiamos el color, 
+// el tamaño, el retraso y le quitamos al estela.
+duplicate(main).pos(0, 0, 100).color("#ffaa00")
+.delay(1).scale(1.5).trail(0).play();
+
+// 3. Marcha atrás, sólido e inclinado
+bvh("rehabilitation_exercise").pos(-120, 0, -250)
+.rotX(0.6).color("#ff0055", "#ffaa00").dummy(3, 4).reverse().play();
+
+// 4. Con huesos reducidos
+bvh("phone_using").pos(120, 0, -100)
+.color("#cc00ff", "#00ffff")
+.dummy(0.8, 2.5).bones(0.5).play();
+
+// speed(2.0);          // Todo a cámara rápida
+// scale(2.0);          // Convierte a todos en gigantes
+// reverse(true);       // Obliga a toda la escena a rebobinar
+// rot(0.01);           // La cámara empieza a girar lentamente alrededor del centro
+// skeleton(false);     // Apaga las líneas de luz base de todos a la vez
+// pause(true);         // Congela el tiempo`
   },
   {
     name: "Color Movements",
