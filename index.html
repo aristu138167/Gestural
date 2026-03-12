@@ -320,29 +320,43 @@
         btn.innerHTML = `<span>${nombre}</span>`;
 
         btn.addEventListener('click', () => {
-          let codigoActual = textareaCode.value;
-          let nuevaLinea = `temp = bvh("${nombre}").color("#ffffff").play();`;
-          let regex = /^temp\s*=\s*bvh\(.*$/m;
+          let code = textareaCode.value;
+          let nuevaLinea = `[bvh("${nombre}")];`;
 
-          if (regex.test(codigoActual)) {
-            codigoActual = codigoActual.replace(regex, nuevaLinea);
+          // Magia Negra: Esta expresión regular busca TODO lo que empiece por bvh( o [bvh( 
+          // y termine en su correspondiente punto y coma ; (incluyendo si tiene flechas -> entre medias)
+          let bvhRegex = /(?:\[\s*)?(?:bvh|duplicate)\(.*?;/gs;
+
+          // Buscamos todas las animaciones que haya perdidas por el código
+          let matches = [...code.matchAll(bvhRegex)];
+
+          if (matches.length > 0) {
+            // Cortamos el código dejando a salvo la cabecera (clear, grid, cam...)
+            let before = code.substring(0, matches[0].index);
+            // Y dejamos a salvo todo lo que haya después del primer bloque de baile
+            let after = code.substring(matches[0].index + matches[0][0].length);
+
+            // ¡Destrucción total! Borramos cualquier otro bvh(...) que haya quedado acumulado en la zona de abajo
+            after = after.replace(/(?:\[\s*)?(?:bvh|duplicate)\(.*?;[\r\n]*/gs, '');
+
+            // Reconstruimos el código: Cabecera + Nueva Animación + Comentarios finales
+            code = before + nuevaLinea + "\n" + after.replace(/^\s+/, '');
           } else {
-            if (codigoActual.trim() !== "") codigoActual += "\n";
-            codigoActual += nuevaLinea;
+            // Si el lienzo está totalmente en blanco y no había ni rastro de bvh
+            code += (code.trim() !== "" ? "\n\n" : "") + nuevaLinea;
           }
 
-          textareaCode.value = codigoActual;
+          textareaCode.value = code;
+          textareaCode.dispatchEvent(new Event('input')); // Avisamos para que salte el asterisco de Guardar
 
-          textareaCode.dispatchEvent(new Event('input'));
-
+          // ¡Y a bailar directamente!
           if (iframePreview.contentWindow) {
-            iframePreview.contentWindow.postMessage({ type: 'execute', code: codigoActual }, '*');
+            document.getElementById('run').click();
           }
         });
 
         bvhList.appendChild(btn);
       });
-
       toggleBtn.addEventListener('click', () => {
         drawer.classList.toggle('abierto');
         if (drawer.classList.contains('abierto')) {

@@ -1,32 +1,17 @@
 export const examples = [
   {
     name: "Animación Base (Default)",
-    code: `clear();
+    code: `///// Animación Base (Default) /////
+clear();
 grid(800, 20);
 cam(0, 200, 650, 0, 120, 0);
 bg("#0a0a0a");
 
-// 1. Con estela, doble color 
-// y encadenamiento de bailes (nextBvh)
-let main = bvh("pirouette").pos(0, 0, 200)
-.color("#00ffcc", "#0055ff").trail(15).play();
-main.nextBvh("warming1").nextBvh("warming2");
+[bvh("pirouette").dummy(4,0).color("green", "white")]
+>[bvh("warming1").dummy(9,1).color("red", "blue")]
+>[bvh("warming2").dummy(10).color("white", "blue")];
 
-// 2. Copiar al protagonista, pero le cambiamos el color, 
-// el tamaño, el retraso y le quitamos al estela.
-duplicate(main).pos(0, 0, 100).color("#ffaa00")
-.delay(1).scale(1.5).trail(0).play();
-
-// 3. Marcha atrás, sólido e inclinado
-bvh("rehabilitation_exercise").pos(-120, 0, -250)
-.rotX(0.6).color("#ff0055", "#ffaa00").dummy(3, 4).reverse().play();
-
-// 4. Con huesos reducidos
-bvh("phone_using").pos(120, 0, -100)
-.color("#cc00ff", "#00ffff")
-.dummy(0.8, 2.5).bones(0.5).play();
-
-// speed(2.0);          // Todo a cámara rápida
+// speed(3.0);          // Todo a cámara rápida
 // scale(2.0);          // Convierte a todos en gigantes
 // reverse(true);       // Obliga a toda la escena a rebobinar
 // rot(0.01);           // La cámara empieza a girar lentamente alrededor del centro

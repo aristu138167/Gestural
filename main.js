@@ -43,6 +43,12 @@ let isRigSelected = false;
 let isGlobalPaused = false;
 let isSaved = false;
 
+// --- FUNCIÓN HELPER PARA LA NUEVA SINTAXIS ---
+const isNewHead = (line) => {
+  let match = line.match(/(?:>\s*\[?\s*)?\b(?:bvh|duplicate)\s*\(/);
+  return match && !match[0].includes('>');
+};
+
 // ==========================================
 // COMUNICACIÓN CON EL MOTOR 3D
 // ==========================================
@@ -60,26 +66,22 @@ window.addEventListener('message', (e) => {
     let charCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
-      if (/\b(?:bvh|duplicate)\s*\(/.test(lines[i])) {
+      if (isNewHead(lines[i])) {
         if (currentSpawnIndex === codeIndex) {
-
           let startPos = charCount;
           let j = i;
           let endPos = charCount + lines[i].length;
+
           while (j < lines.length && !lines[j].includes(';')) {
             j++;
             if (j < lines.length) {
-              if (/\b(?:bvh|duplicate)\s*\(/.test(lines[j])) break;
+              if (isNewHead(lines[j])) break;
               endPos += 1 + lines[j].length;
             }
           }
 
           let statement = code.substring(startPos, endPos);
-
-          statement = statement.replace(/\.pos\([^)]+\)/g, '')
-            .replace(/\.x\([^)]+\)/g, '')
-            .replace(/\.z\([^)]+\)/g, '');
-
+          statement = statement.replace(/\.pos\([^)]+\)/g, '').replace(/\.x\([^)]+\)/g, '').replace(/\.z\([^)]+\)/g, '');
           statement = statement.replace(/(bvh\([^)]+\)|duplicate\([^)]+\))/, `$1.pos(${Math.round(x)}, 0, ${Math.round(z)})`);
 
           codeEl.value = code.substring(0, startPos) + statement + code.substring(endPos);
@@ -93,8 +95,6 @@ window.addEventListener('message', (e) => {
       }
       charCount += lines[i].length + 1;
     }
-
-    // 2. EL USUARIO HA ROTADO UN PERSONAJE
   } else if (e.data.type === 'rigRotated') {
     const { codeIndex, rotX, rotY } = e.data;
     let code = codeEl.value;
@@ -103,24 +103,22 @@ window.addEventListener('message', (e) => {
     let charCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
-      if (/\b(?:bvh|duplicate)\s*\(/.test(lines[i])) {
+      if (isNewHead(lines[i])) {
         if (currentSpawnIndex === codeIndex) {
-
           let startPos = charCount;
           let j = i;
           let endPos = charCount + lines[i].length;
+
           while (j < lines.length && !lines[j].includes(';')) {
             j++;
             if (j < lines.length) {
-              if (/\b(?:bvh|duplicate)\s*\(/.test(lines[j])) break;
+              if (isNewHead(lines[j])) break;
               endPos += 1 + lines[j].length;
             }
           }
 
           let statement = code.substring(startPos, endPos);
-
-          statement = statement.replace(/\.rotX\([^)]+\)/g, '')
-            .replace(/\.rotY\([^)]+\)/g, '');
+          statement = statement.replace(/\.rotX\([^)]+\)/g, '').replace(/\.rotY\([^)]+\)/g, '');
 
           let rotString = '';
           if (Math.abs(rotX) > 0.01) rotString += `.rotX(${rotX.toFixed(2)})`;
@@ -150,7 +148,7 @@ window.addEventListener('message', (e) => {
     let charCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
-      if (/\b(?:bvh|duplicate)\s*\(/.test(lines[i])) {
+      if (isNewHead(lines[i])) {
         if (currentSpawnIndex === targetIndex) {
           let startPos = charCount;
           let endPos = charCount + lines[i].length;
@@ -159,7 +157,7 @@ window.addEventListener('message', (e) => {
           while (j < lines.length && !lines[j].includes(';')) {
             j++;
             if (j < lines.length) {
-              if (/\b(?:bvh|duplicate)\s*\(/.test(lines[j])) break;
+              if (isNewHead(lines[j])) break;
               endPos += 1 + lines[j].length;
             }
           }
@@ -194,7 +192,24 @@ function runCode(code) {
   isGlobalPaused = false;
   if (globalPauseBtn) globalPauseBtn.textContent = 'Pause';
 
-  iframe.contentWindow.postMessage({ type: 'execute', code: code }, '*');
+  // ==========================================
+  // TRADUCTOR SINTAXIS VISUAL (Transpilador)
+  // ==========================================
+  let transpiled = code;
+
+  // 1. Convertimos TODOS los corchetes de cierre en .play()
+  transpiled = transpiled.replace(/\]/g, '.play()');
+
+  // 2. Conectamos las flechas manteniendo el .play() intacto
+  transpiled = transpiled.replace(/\.play\(\)\s*>\s*\[?\s*bvh\(/g, '.play().nextBvh(');
+
+  // 3. Limpiamos todos los corchetes de apertura '['
+  transpiled = transpiled.replace(/\[/g, '');
+
+  // 4. Limpieza por si el usuario escribe un .play() a mano por costumbre
+  transpiled = transpiled.replace(/\.play\(\)\s*\.play\(\)/g, '.play()');
+
+  iframe.contentWindow.postMessage({ type: 'execute', code: transpiled }, '*');
 }
 
 runBtn.addEventListener("click", run);
@@ -236,7 +251,7 @@ if (randomBtn) {
     currentExampleIndex = randomIndex;
     const selected = examples[currentExampleIndex];
     codeEl.value = `///// ${selected.name} /////\n${selected.code}`;
-    codeEl.dispatchEvent(new Event('input')); // Aviso al botón
+    codeEl.dispatchEvent(new Event('input'));
     if (loader) loader.style.display = "block";
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => { run(); if (loader) loader.style.display = "none"; }, 3000);
@@ -299,7 +314,7 @@ codeEl.addEventListener("keydown", function (e) {
     const spaces = "  ";
     this.value = this.value.substring(0, start) + spaces + this.value.substring(end);
     this.selectionStart = this.selectionEnd = start + spaces.length;
-    this.dispatchEvent(new Event('input')); // Aviso al botón
+    this.dispatchEvent(new Event('input'));
   }
 });
 
@@ -330,9 +345,6 @@ codeEl.addEventListener('input', () => {
   }
 });
 
-// ==========================================
-// INICIALIZACIÓN
-// ==========================================
 function init() {
   iframe.srcdoc = buildPreviewHtml();
 
