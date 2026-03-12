@@ -61,20 +61,30 @@
     #run,
     #toggle,
     #randomBtn,
-    #globalPauseBtn {
+    #globalPauseBtn,
+    #saveBtn {
       padding: 6px 10px;
       cursor: pointer;
       border-radius: 8px;
       border: 1px solid rgba(255, 255, 255, 0.18);
       background: rgba(255, 255, 255, 0.06);
       color: #eaeaea;
+      transition: all 0.3s ease;
     }
 
     #run:hover,
     #toggle:hover,
     #randomBtn:hover,
-    #globalPauseBtn:hover {
+    #globalPauseBtn:hover,
+    #saveBtn:hover {
       background: rgba(255, 255, 255, 0.10);
+    }
+
+    .btn-save.saved {
+      background-color: #00ffcc !important;
+      color: #000 !important;
+      border-color: #00ffcc !important;
+      font-weight: bold;
     }
 
     #code {
@@ -91,6 +101,7 @@
       tab-size: 2;
       overflow: auto;
       white-space: pre;
+      box-sizing: border-box;
     }
 
     #overlay.minimized {
@@ -254,9 +265,9 @@
       <div id="bar">
         <button id="run">Run (Ctrl+Enter)</button>
         <button id="toggle">Hide</button>
-        <button id="globalPauseBtn" style="cursor:pointer;">Pause</button>
-        <button id="randomBtn" style="cursor:pointer; margin-right:5px; display: none;"><i class="fas fa-random"></i>
-          Random</button>
+        <button id="globalPauseBtn">Pause</button>
+        <button id="saveBtn" class="btn-save">Guardar</button>
+        <button id="randomBtn" style="display: none;"><i class="fas fa-random"></i> Random</button>
       </div>
       <textarea id="code" spellcheck="false"></textarea>
       <div id="resizeHandle"></div>
@@ -309,7 +320,6 @@
         btn.innerHTML = `<span>${nombre}</span>`;
 
         btn.addEventListener('click', () => {
-          // --- LÓGICA DE BANDEJA INTELIGENTE ---
           let codigoActual = textareaCode.value;
           let nuevaLinea = `temp = bvh("${nombre}").color("#ffffff").play();`;
           let regex = /^temp\s*=\s*bvh\(.*$/m;
@@ -322,6 +332,8 @@
           }
 
           textareaCode.value = codigoActual;
+
+          textareaCode.dispatchEvent(new Event('input'));
 
           if (iframePreview.contentWindow) {
             iframePreview.contentWindow.postMessage({ type: 'execute', code: codigoActual }, '*');
@@ -337,19 +349,6 @@
           toggleIcon.className = 'fas fa-chevron-down';
         } else {
           toggleIcon.className = 'fas fa-chevron-up';
-        }
-      });
-
-      const globalPauseBtn = document.getElementById('globalPauseBtn');
-      let isGlobalPaused = false;
-      globalPauseBtn.addEventListener('click', () => {
-        isGlobalPaused = !isGlobalPaused;
-        if (isGlobalPaused) {
-          globalPauseBtn.innerHTML = 'Play';
-          if (iframePreview.contentWindow) iframePreview.contentWindow.postMessage({ type: 'execute', code: 'pause(true);' }, '*');
-        } else {
-          globalPauseBtn.innerHTML = 'Pause';
-          if (iframePreview.contentWindow) iframePreview.contentWindow.postMessage({ type: 'execute', code: 'pause(false);' }, '*');
         }
       });
     });

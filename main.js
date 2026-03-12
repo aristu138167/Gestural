@@ -33,39 +33,60 @@ const overlay = document.getElementById("overlay");
 const bar = document.getElementById("bar");
 const resizeHandle = document.getElementById("resizeHandle");
 const randomBtn = document.getElementById("randomBtn");
+const saveBtn = document.getElementById('saveBtn');
 const errBox = document.getElementById("err");
+const globalPauseBtn = document.getElementById("globalPauseBtn");
 
 let engineReady = false;
 let pendingCode = null;
 let isRigSelected = false;
+let isGlobalPaused = false;
+let isSaved = false;
 
-// --- ESCUCHAMOS LOS MENSAJES DEL MOTOR 3D ---
+// ==========================================
+// COMUNICACIÓN CON EL MOTOR 3D
+// ==========================================
 window.addEventListener('message', (e) => {
   if (e.data.type === 'ready') {
     engineReady = true;
     if (pendingCode) { runCode(pendingCode); pendingCode = null; }
   } else if (e.data.type === 'error') {
     mostrarError(e.data.message);
-
-    // 1. EL USUARIO HA MOVIDO UN PERSONAJE
   } else if (e.data.type === 'rigMoved') {
     const { codeIndex, x, z } = e.data;
     let code = codeEl.value;
     let lines = code.split('\n');
     let currentSpawnIndex = 0;
-    let charCount = 0; // Añadimos el contador aquí también
+    let charCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
       if (/\b(?:bvh|duplicate)\s*\(/.test(lines[i])) {
         if (currentSpawnIndex === codeIndex) {
-          let line = lines[i];
-          line = line.replace(/\.pos\([^)]+\)/g, '').replace(/\.x\([^)]+\)/g, '').replace(/\.z\([^)]+\)/g, '');
-          line = line.replace(/(bvh\([^)]+\)|duplicate\([^)]+\))/, `$1.pos(${Math.round(x)}, 0, ${Math.round(z)})`);
-          lines[i] = line;
 
-          codeEl.value = lines.join('\n');
-          // Mantenemos el subrayado tras actualizar los números
-          codeEl.setSelectionRange(charCount, charCount + line.length);
+          let startPos = charCount;
+          let j = i;
+          let endPos = charCount + lines[i].length;
+          while (j < lines.length && !lines[j].includes(';')) {
+            j++;
+            if (j < lines.length) {
+              if (/\b(?:bvh|duplicate)\s*\(/.test(lines[j])) break;
+              endPos += 1 + lines[j].length;
+            }
+          }
+
+          let statement = code.substring(startPos, endPos);
+
+          statement = statement.replace(/\.pos\([^)]+\)/g, '')
+            .replace(/\.x\([^)]+\)/g, '')
+            .replace(/\.z\([^)]+\)/g, '');
+
+          statement = statement.replace(/(bvh\([^)]+\)|duplicate\([^)]+\))/, `$1.pos(${Math.round(x)}, 0, ${Math.round(z)})`);
+
+          codeEl.value = code.substring(0, startPos) + statement + code.substring(endPos);
+          codeEl.dispatchEvent(new Event('input'));
+
+          codeEl.focus();
+          codeEl.setSelectionRange(startPos, startPos + statement.length);
           break;
         }
         currentSpawnIndex++;
@@ -79,33 +100,47 @@ window.addEventListener('message', (e) => {
     let code = codeEl.value;
     let lines = code.split('\n');
     let currentSpawnIndex = 0;
-    let charCount = 0; // Añadimos el contador aquí también
+    let charCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
       if (/\b(?:bvh|duplicate)\s*\(/.test(lines[i])) {
         if (currentSpawnIndex === codeIndex) {
-          let line = lines[i];
-          line = line.replace(/\.rotX\([^)]+\)/g, '').replace(/\.rotY\([^)]+\)/g, '');
+
+          let startPos = charCount;
+          let j = i;
+          let endPos = charCount + lines[i].length;
+          while (j < lines.length && !lines[j].includes(';')) {
+            j++;
+            if (j < lines.length) {
+              if (/\b(?:bvh|duplicate)\s*\(/.test(lines[j])) break;
+              endPos += 1 + lines[j].length;
+            }
+          }
+
+          let statement = code.substring(startPos, endPos);
+
+          statement = statement.replace(/\.rotX\([^)]+\)/g, '')
+            .replace(/\.rotY\([^)]+\)/g, '');
 
           let rotString = '';
           if (Math.abs(rotX) > 0.01) rotString += `.rotX(${rotX.toFixed(2)})`;
           if (Math.abs(rotY) > 0.01) rotString += `.rotY(${rotY.toFixed(2)})`;
 
           if (rotString !== '') {
-            line = line.replace(/(bvh\([^)]+\)|duplicate\([^)]+\))/, `$1${rotString}`);
+            statement = statement.replace(/(bvh\([^)]+\)|duplicate\([^)]+\))/, `$1${rotString}`);
           }
-          lines[i] = line;
 
-          codeEl.value = lines.join('\n');
-          // Mantenemos el subrayado tras actualizar los números
-          codeEl.setSelectionRange(charCount, charCount + line.length);
+          codeEl.value = code.substring(0, startPos) + statement + code.substring(endPos);
+          codeEl.dispatchEvent(new Event('input'));
+
+          codeEl.focus();
+          codeEl.setSelectionRange(startPos, startPos + statement.length);
           break;
         }
         currentSpawnIndex++;
       }
       charCount += lines[i].length + 1;
     }
-    // 3. EL USUARIO HA HECHO CLIC EN UN PERSONAJE
   } else if (e.data.type === 'rigSelected') {
     isRigSelected = true;
     const targetIndex = e.data.codeIndex;
@@ -117,24 +152,18 @@ window.addEventListener('message', (e) => {
     for (let i = 0; i < lines.length; i++) {
       if (/\b(?:bvh|duplicate)\s*\(/.test(lines[i])) {
         if (currentSpawnIndex === targetIndex) {
-
           let startPos = charCount;
           let endPos = charCount + lines[i].length;
 
-          // --- MAGIA MULTILÍNEA ---
-          // Si la línea no tiene punto y coma, atrapamos las siguientes líneas
           let j = i;
           while (j < lines.length && !lines[j].includes(';')) {
             j++;
             if (j < lines.length) {
-              // Si de repente empieza OTRO personaje (por si se te olvidó el ;), paramos
               if (/\b(?:bvh|duplicate)\s*\(/.test(lines[j])) break;
-
-              endPos += 1 + lines[j].length; // +1 por el salto de línea (\n)
+              endPos += 1 + lines[j].length;
             }
           }
 
-          // Seleccionamos todo el bloque entero
           codeEl.focus();
           codeEl.setSelectionRange(startPos, endPos);
           break;
@@ -144,7 +173,7 @@ window.addEventListener('message', (e) => {
       charCount += lines[i].length + 1;
     }
   } else if (e.data.type === 'rigDeselected') {
-    isRigSelected = false; // Apagamos la selección
+    isRigSelected = false;
     codeEl.setSelectionRange(codeEl.selectionEnd, codeEl.selectionEnd);
   }
 });
@@ -161,16 +190,41 @@ function run() {
 
 function runCode(code) {
   if (errBox) errBox.style.display = 'none';
+
+  isGlobalPaused = false;
+  if (globalPauseBtn) globalPauseBtn.textContent = 'Pause';
+
   iframe.contentWindow.postMessage({ type: 'execute', code: code }, '*');
 }
 
 runBtn.addEventListener("click", run);
+
 window.addEventListener("keydown", (e) => {
   if (((e.ctrlKey || e.metaKey) && e.key === "Enter") || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s")) {
-    e.preventDefault(); run();
+    e.preventDefault();
+    run();
   }
 });
 
+// ==========================================
+// BOTÓN DE PAUSA GLOBAL
+// ==========================================
+if (globalPauseBtn) {
+  globalPauseBtn.addEventListener('click', () => {
+    isGlobalPaused = !isGlobalPaused;
+    if (isGlobalPaused) {
+      globalPauseBtn.textContent = 'Play';
+      iframe.contentWindow.postMessage({ type: 'execute', code: 'pause(true);' }, '*');
+    } else {
+      globalPauseBtn.textContent = 'Pause';
+      iframe.contentWindow.postMessage({ type: 'execute', code: 'pause(false);' }, '*');
+    }
+  });
+}
+
+// ==========================================
+// INTERFAZ (Botones, arrastre y redimensionado)
+// ==========================================
 const loader = document.getElementById("loader");
 let currentExampleIndex = 0;
 let debounceTimer = null;
@@ -182,6 +236,7 @@ if (randomBtn) {
     currentExampleIndex = randomIndex;
     const selected = examples[currentExampleIndex];
     codeEl.value = `///// ${selected.name} /////\n${selected.code}`;
+    codeEl.dispatchEvent(new Event('input')); // Aviso al botón
     if (loader) loader.style.display = "block";
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => { run(); if (loader) loader.style.display = "none"; }, 3000);
@@ -233,28 +288,70 @@ window.addEventListener("pointermove", (e) => {
 window.addEventListener("pointerup", () => { resizing = false; });
 
 codeEl.addEventListener("keydown", function (e) {
-  // 1. Si hay un muñeco seleccionado, atrapamos las flechas y se las mandamos al 3D
   if (isRigSelected && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-    e.preventDefault(); // Evitamos que el cursor de texto se mueva y quite el azul
+    e.preventDefault();
     iframe.contentWindow.postMessage({ type: 'remoteKey', key: e.key, shiftKey: e.shiftKey }, '*');
     return;
   }
-
-  // 2. Comportamiento normal del Tabulador
   if (e.key === "Tab") {
     e.preventDefault();
     const start = this.selectionStart; const end = this.selectionEnd;
     const spaces = "  ";
     this.value = this.value.substring(0, start) + spaces + this.value.substring(end);
     this.selectionStart = this.selectionEnd = start + spaces.length;
+    this.dispatchEvent(new Event('input')); // Aviso al botón
   }
 });
 
+// ==========================================
+// SISTEMA DE GUARDADO (INTERRUPTOR / TOGGLE)
+// ==========================================
+saveBtn.addEventListener('click', () => {
+  if (isSaved) {
+    localStorage.removeItem('gestural_saved_code');
+    isSaved = false;
+    saveBtn.textContent = 'Guardar';
+    saveBtn.classList.remove('saved');
+  } else {
+    localStorage.setItem('gestural_saved_code', codeEl.value);
+    isSaved = true;
+    saveBtn.textContent = 'Guardado';
+    saveBtn.classList.add('saved');
+  }
+});
+
+codeEl.addEventListener('input', () => {
+  if (isSaved) {
+    isSaved = false;
+    saveBtn.textContent = 'Guardar *';
+    saveBtn.classList.remove('saved');
+  } else if (saveBtn.textContent === 'Guardar') {
+    saveBtn.textContent = 'Guardar *';
+  }
+});
+
+// ==========================================
+// INICIALIZACIÓN
+// ==========================================
 function init() {
   iframe.srcdoc = buildPreviewHtml();
-  const defaultExample = examples[0];
-  codeEl.value = `///// ${defaultExample.name} /////\n${defaultExample.code}`;
-  run();
+
+  const savedCode = localStorage.getItem('gestural_saved_code');
+
+  if (savedCode) {
+    codeEl.value = savedCode;
+    isSaved = true;
+    saveBtn.textContent = 'Guardado';
+    saveBtn.classList.add('saved');
+  } else {
+    const defaultExample = examples[0];
+    codeEl.value = `///// ${defaultExample.name} /////\n${defaultExample.code}`;
+    isSaved = false;
+    saveBtn.textContent = 'Guardar';
+    saveBtn.classList.remove('saved');
+  }
+
+  pendingCode = codeEl.value;
 }
 
 init();
